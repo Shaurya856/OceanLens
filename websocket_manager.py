@@ -5,6 +5,7 @@ class WebSocketManager:
         self.connections = {}
 
     async def connect(self, job_id: str, websocket: WebSocket):
+        print("WS CONNECTED:", job_id)  # debug log (optional)
         await websocket.accept()
         self.connections[job_id] = websocket
 
