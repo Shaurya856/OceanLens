@@ -6,3 +6,11 @@ websockets>=12.0
 
 # Multipart form handling (used by FastAPI for file uploads)
 python-multipart>=0.0.9
+
+# Image processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Prototype UI
+streamlit>=1.32.0
+Pillow>=10.0.0

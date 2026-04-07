@@ -8,7 +8,7 @@ def run_single(image: bytes, technique: str, params: dict) -> bytes:
 
 def run_custom(image: bytes, techniques: list[str], params: dict) -> bytes:
     for tech in techniques:
-        def step():
-            return TECHNIQUES[tech](image, params.get(tech, {}))
+        def step(t=tech):
+            return TECHNIQUES[t](image, params.get(t, {}))
         image, _ = retry(step)
     return image
