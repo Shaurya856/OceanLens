@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Species Detection (Enhanced)</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item active" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search samples..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main px-8">
+  <div class="max-w-[1100px] pt-8">
+    <header class="mb-8">
+      <h2 class="page-title">Species Detection (Enhanced)</h2>
+      <p class="page-subtitle">Enhance images then run species detection as a single pipeline.</p>
+    </header>
+
+    <!-- Stepper -->
+    <div class="flex items-center mb-8">
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle current">1</div>
+        <span class="section-label">Upload</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle">2</div>
+        <span class="section-label text-gray-300">Enhance</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle">3</div>
+        <span class="section-label text-gray-300">Detect</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle">4</div>
+        <span class="section-label text-gray-300">Results</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      <!-- Left: Batch + Config -->
+      <div class="col-span-12 lg:col-span-4 space-y-4">
+
+        <!-- Batch Summary -->
+        <div class="card card-body">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="card-title">Batch Summary</h3>
+            <span class="section-label" id="assets-count">0 assets</span>
+          </div>
+          <label class="drop-zone" id="drop-zone">
+            <span class="material-symbols-outlined drop-zone-icon">add_photo_alternate</span>
+            <h3>Drop images or click to browse</h3>
+            <p class="text-xs text-gray-500" id="drop-zone-info"></p>
+            <input type="file" accept="image/*" multiple class="hidden" id="file-input"/>
+          </label>
+        </div>
+
+        <!-- Enhancement Pipeline Config -->
+        <div class="card card-body-md">
+          <h3 class="card-title mb-4"><span class="material-symbols-outlined text-sm">tune</span>Enhancement Pipeline</h3>
+          <div class="space-y-2">
+
+            <!-- Denoise -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">filter_alt</span><span class="text-xs font-bold text-gray-900">Denoise</span></div>
+                <input type="checkbox" checked class="checkbox" id="se-denoise-check"/>
+              </div>
+              <div class="space-y-1">
+                <div class="field-row"><span class="field-label">Sigma Level</span><span class="field-value" id="se-denoise-lbl">15σ</span></div>
+                <input type="range" min="0" max="50" value="15" id="se-denoise"/>
+              </div>
+            </div>
+
+            <!-- CLAHE -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">equalizer</span><span class="text-xs font-bold text-gray-900">CLAHE</span></div>
+                <input type="checkbox" checked class="checkbox" id="se-clahe-check"/>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1"><label class="section-label block">Clip Limit</label><input class="form-input-sm" type="text" value="3.0" id="se-clahe-clip"/></div>
+                <div class="space-y-1"><label class="section-label block">Tile Size</label><input class="form-input-sm" type="text" value="8x8" id="se-clahe-tile"/></div>
+              </div>
+            </div>
+
+            <!-- Gamma Correction -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">exposure</span><span class="text-xs font-bold text-gray-900">Gamma Correction</span></div>
+                <input type="checkbox" checked class="checkbox" id="se-gamma-check"/>
+              </div>
+              <div class="space-y-1">
+                <div class="field-row"><span class="field-label">Correction</span><span class="field-value" id="se-gamma-lbl">1.2γ</span></div>
+                <input type="range" min="0.5" max="3.0" step="0.1" value="1.2" id="se-gamma"/>
+              </div>
+            </div>
+
+            <!-- White Balance -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">palette</span><span class="text-xs font-bold text-gray-900">White Balance</span></div>
+                <input type="checkbox" class="checkbox" id="se-wb-check"/>
+              </div>
+              <select class="form-select">
+                <option>Gray World</option><option>White Patch</option><option>Learning-Based</option>
+              </select>
+            </div>
+
+            <!-- Dehaze -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">blur_off</span><span class="text-xs font-bold text-gray-900">Dehaze</span></div>
+                <input type="checkbox" checked class="checkbox" id="se-dehaze-check"/>
+              </div>
+              <div class="space-y-1">
+                <div class="field-row"><span class="field-label">Strength</span><span class="field-value" id="se-dehaze-lbl">0.70</span></div>
+                <input type="range" min="0" max="1" step="0.05" value="0.7" id="se-dehaze"/>
+              </div>
+            </div>
+
+            <!-- Retinex -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">architecture</span><span class="text-xs font-bold text-gray-900">Retinex</span></div>
+                <input type="checkbox" class="checkbox" id="se-retinex-check"/>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <select class="form-select opacity-40" disabled id="se-retinex-method"><option>MSRCR</option><option>MSRCP</option><option>GIMP</option></select>
+                <input class="form-input-sm opacity-40" disabled placeholder="15, 80, 250" type="text" id="se-retinex-scales"/>
+              </div>
+            </div>
+
+            <!-- Super Resolution -->
+            <div class="technique-card space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">hd</span><span class="text-xs font-bold text-gray-900">Super Resolution</span></div>
+                <input type="checkbox" class="checkbox" id="se-sr-check"/>
+              </div>
+              <div class="flex gap-2 opacity-40" id="se-sr-scales">
+                <button class="btn-scale active" disabled>2×</button>
+                <button class="btn-scale" disabled>4×</button>
+                <button class="btn-scale" disabled>8×</button>
+              </div>
+            </div>
+
+          </div>
+          <button class="btn-primary w-full mt-5" id="run-btn">
+            <span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Right: Detection Feed -->
+      <div class="col-span-12 lg:col-span-8 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="card-title">Detection Feed</h3>
+          <div class="flex items-center gap-2">
+            <button class="btn-icon"><span class="material-symbols-outlined text-sm">grid_view</span></button>
+            <button class="btn-icon"><span class="material-symbols-outlined text-sm">list</span></button>
+            <button class="btn-secondary" id="download-results-btn" disabled><span class="material-symbols-outlined text-sm">download_for_offline</span>Download Results</button>
+          </div>
+        </div>
+
+        <div class="card" id="detection-feed">
+          <div class="empty-state py-20" id="detection-empty">
+            <span class="material-symbols-outlined">biotech</span>
+            <p>No detections yet</p>
+            <span>Upload images and run the pipeline to see detection results.</span>
+          </div>
+          <div class="hidden divide-y divide-gray-100" id="detection-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch Table -->
+    <section class="mt-8 card overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        <h3 class="section-label">Batch Summary Table</h3>
+        <button class="btn-secondary text-[10px]" id="export-csv-btn" disabled>Export CSV <span class="material-symbols-outlined text-sm">table_view</span></button>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th class="text-center">Detections</th>
+            <th>Novel</th>
+            <th>Top Species</th>
+            <th>Phylum</th>
+          </tr>
+        </thead>
+        <tbody id="summary-tbody">
+          <tr>
+            <td colspan="5" class="text-center text-gray-400 py-8">No results — run pipeline to populate this table.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer justify-between">
+  <div class="flex items-center gap-5">
+    <div class="flex items-center gap-2">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+    <div class="flex items-center gap-1.5 border-l border-gray-100 pl-5 text-[10px] font-mono text-gray-400">
+      Job: <span id="job-display" class="text-gray-600 ml-1">—</span>
+    </div>
+  </div>
+  <span class="status-text text-gray-400" id="footer-right">Ready</span>
+</footer>
+
+<script type="module">
+import { connectJob, initDropZone, setStatus, exportCSV, collectEnhancement, triggerDownload, buildDetCard } from '/ui/app.js';
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+[['se-denoise', 'se-denoise-lbl', v => Math.round(v) + 'σ'],
+ ['se-gamma',   'se-gamma-lbl',   v => parseFloat(v).toFixed(1) + 'γ'],
+ ['se-dehaze',  'se-dehaze-lbl',  v => parseFloat(v).toFixed(2)],
+].forEach(([id, lid, fmt]) => {
+    const el = document.getElementById(id);
+    const lbl = document.getElementById(lid);
+    if (el && lbl) el.addEventListener('input', () => lbl.textContent = fmt(el.value));
+});
+
+document.getElementById('se-gamma-check').addEventListener('change', (e) => {
+    // gamma slider always enabled for this page (no disabled state in template)
+});
+
+document.getElementById('se-retinex-check').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    ['se-retinex-method', 'se-retinex-scales'].forEach(id => {
+        const el = document.getElementById(id);
+        el.disabled = !on;
+        el.classList.toggle('opacity-40', !on);
+    });
+});
+
+document.getElementById('se-sr-check').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    const group = document.getElementById('se-sr-scales');
+    group.classList.toggle('opacity-40', !on);
+    group.querySelectorAll('button').forEach(b => b.disabled = !on);
+});
+
+document.getElementById('se-sr-scales').querySelectorAll('.btn-scale').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        document.getElementById('se-sr-scales').querySelectorAll('.btn-scale')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFiles = [];
+let csvRows       = [];
+let resultsUrl    = null;
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFiles = files;
+    document.getElementById('drop-zone-info').textContent = files.length + ' file(s) selected';
+    document.getElementById('assets-count').textContent   = files.length + ' assets';
+});
+
+// ── Run Detection ─────────────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', async () => {
+    if (!selectedFiles.length) { alert('Please select images first.'); return; }
+
+    const { techniques, params } = collectEnhancement({
+        denoiseCheck: 'se-denoise-check',  denoiseSlider: 'se-denoise',
+        claheCheck:   'se-clahe-check',    claheClip: 'se-clahe-clip', claheTile: 'se-clahe-tile',
+        gammaCheck:   'se-gamma-check',    gammaSlider: 'se-gamma',
+        wbCheck:      'se-wb-check',
+        dehazeCheck:  'se-dehaze-check',   dehazeSlider: 'se-dehaze',
+        retinexCheck: 'se-retinex-check',  retinexScales: 'se-retinex-scales',
+        srCheck:      'se-sr-check',       srScaleGroup: 'se-sr-scales',
+    });
+
+    const jobId  = crypto.randomUUID();
+    csvRows      = [];
+    resultsUrl   = null;
+    const runBtn = document.getElementById('run-btn');
+    runBtn.disabled    = true;
+    runBtn.textContent = 'Running…';
+    setStatus('busy', 'Pipeline running…', jobId);
+
+    document.getElementById('detection-empty').classList.remove('hidden');
+    document.getElementById('detection-list').classList.add('hidden');
+    document.getElementById('detection-list').innerHTML = '';
+    document.getElementById('summary-tbody').innerHTML =
+        '<tr><td colspan="5" class="text-center text-gray-400 py-4">Running…</td></tr>';
+
+    connectJob(jobId, {
+        onProgress: (msg) => setStatus('busy', msg.status.replace('_', ' '), jobId),
+        onImageDone: (msg) => addResultRow(msg),
+        onDone: async (msg) => {
+            resultsUrl = msg.results_url;
+            if (resultsUrl) {
+                try {
+                    const r       = await fetch(resultsUrl);
+                    const data    = await r.json();
+                    const results = data.results || [];
+                    populateSummaryTable(results);
+                    buildCSVRows(results);
+
+                    // Replace inline rows with collapsible bbox cards
+                    const fileMap = {};
+                    selectedFiles.forEach(f => fileMap[f.name] = f);
+                    const list = document.getElementById('detection-list');
+                    list.innerHTML = '';
+                    list.classList.remove('hidden');
+                    document.getElementById('detection-empty').classList.add('hidden');
+                    results.forEach(r => {
+                        const file = fileMap[r.filename];
+                        list.appendChild(buildDetCard(
+                            file ? URL.createObjectURL(file) : null,
+                            r.filename,
+                            r.detections || []
+                        ));
+                    });
+
+                    document.getElementById('download-results-btn').disabled = false;
+                    document.getElementById('export-csv-btn').disabled       = false;
+                } catch {}
+            }
+            setStatus('live', 'Complete', jobId);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+        },
+        onError: (msg) => {
+            setStatus('idle', 'Error', null);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+        },
+    });
+
+    const fd = new FormData();
+    selectedFiles.forEach(f => fd.append('images', f));
+    fd.append('job_id',     jobId);
+    fd.append('techniques', JSON.stringify(techniques));
+    fd.append('params',     JSON.stringify(params));
+
+    try {
+        const res = await fetch('/pipeline/image/enhance-detect', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+        setStatus('idle', 'Error', null);
+        runBtn.disabled    = false;
+        runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+    }
+});
+
+// ── Per-image result row ──────────────────────────────────────────────────────
+function addResultRow(msg) {
+    document.getElementById('detection-empty').classList.add('hidden');
+    const list = document.getElementById('detection-list');
+    list.classList.remove('hidden');
+    const div = document.createElement('div');
+    div.className = 'px-4 py-3 flex items-center justify-between text-xs';
+    div.innerHTML = `
+        <span class="font-mono text-gray-700 truncate max-w-[50%]">${msg.filename}</span>
+        <span class="text-gray-500">${msg.detection_count ?? 0} detections</span>
+        <span class="text-amber-600">${msg.novel_count ?? 0} novel</span>`;
+    list.appendChild(div);
+}
+
+function populateSummaryTable(results) {
+    const tbody = document.getElementById('summary-tbody');
+    if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-8">No detections.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = results.map(r => {
+        const top = r.detections?.[0];
+        return `<tr>
+            <td class="font-mono">${r.filename}</td>
+            <td class="text-center">${r.detections?.length ?? 0}</td>
+            <td>${r.detections?.filter(d => d.is_novel).length ?? 0}</td>
+            <td>${top?.taxonomy?.species ?? '—'}</td>
+            <td>${top?.taxonomy?.phylum ?? '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+function buildCSVRows(results) {
+    csvRows = results.flatMap(r => (r.detections || []).map(d => ({
+        filename:   r.filename,
+        confidence: d.confidence,
+        species:    d.taxonomy?.species ?? '',
+        phylum:     d.taxonomy?.phylum  ?? '',
+        is_novel:   d.is_novel,
+    })));
+}
+
+// ── Download & Export ─────────────────────────────────────────────────────────
+document.getElementById('download-results-btn').addEventListener('click', () => {
+    if (resultsUrl) triggerDownload(resultsUrl, 'results.json');
+});
+
+document.getElementById('export-csv-btn').addEventListener('click', () =>
+    exportCSV(csvRows, 'enhance_detect_results.csv'));
+</script>
+</body>
+</html>

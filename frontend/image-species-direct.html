@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Species Detection (Direct)</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item active" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search datasets..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main px-8">
+  <div class="max-w-[1100px] pt-8">
+    <header class="mb-8">
+      <h2 class="page-title">Species Detection (Direct)</h2>
+      <p class="page-subtitle">Run inference directly on uploaded images without enhancement.</p>
+    </header>
+
+    <div class="grid grid-cols-12 gap-6">
+      <!-- Left: Upload -->
+      <div class="col-span-12 lg:col-span-8 space-y-4">
+
+        <!-- Drop zone -->
+        <label class="drop-zone" id="drop-zone">
+          <span class="material-symbols-outlined drop-zone-icon">cloud_upload</span>
+          <h3>Drop mission images here</h3>
+          <p class="text-xs text-gray-500" id="drop-zone-info">TIFF, RAW, JPG — up to 50 MB per file</p>
+          <input type="file" accept="image/*" multiple class="hidden" id="file-input"/>
+        </label>
+
+        <!-- Upload queue -->
+        <div class="card card-body">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="card-title">Upload Queue</h3>
+            <span class="section-label" id="queue-count">0 images</span>
+          </div>
+          <div class="empty-state py-8 border border-dashed border-gray-200 rounded bg-gray-50" id="queue-empty">
+            <span class="material-symbols-outlined">image</span>
+            <p>No images added</p>
+            <span>Uploaded images will appear here.</span>
+          </div>
+          <ul class="hidden space-y-1 text-xs text-gray-600 font-mono max-h-32 overflow-y-auto" id="queue-list"></ul>
+        </div>
+      </div>
+
+      <!-- Right: Config -->
+      <div class="col-span-12 lg:col-span-4">
+        <div class="sticky top-[72px] card card-body-md">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="card-title">Configuration</h3>
+            <span class="badge">SeaBed v2.1</span>
+          </div>
+          <div class="space-y-5">
+            <div>
+              <div class="field-row"><label class="field-label">Confidence Threshold</label><span class="field-value" id="conf-label">0.70</span></div>
+              <input type="range" min="0" max="1" step="0.01" value="0.70" id="conf-input"/>
+            </div>
+            <div>
+              <div class="field-row"><label class="field-label">NMS Threshold</label><span class="field-value" id="nms-label">0.45</span></div>
+              <input type="range" min="0" max="1" step="0.01" value="0.45" id="nms-input"/>
+            </div>
+            <div>
+              <label class="field-label block mb-1.5">Max Detections</label>
+              <input class="form-input" type="number" value="100" min="1" id="max-det-input"/>
+            </div>
+            <button class="btn-primary w-full" id="run-btn">
+              <span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="col-span-12 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="card-title">Detection Results</h3>
+          <div class="flex gap-2">
+            <button class="btn-secondary" id="export-all-btn" disabled><span class="material-symbols-outlined text-sm">file_download</span>Export All</button>
+          </div>
+        </div>
+
+        <div class="card" id="detection-results">
+          <div class="empty-state py-14" id="detection-empty">
+            <span class="material-symbols-outlined">image_search</span>
+            <p>No detections yet</p>
+            <span>Upload images and run detection to see results.</span>
+          </div>
+          <div class="hidden divide-y divide-gray-100" id="detection-list"></div>
+        </div>
+
+        <!-- Batch Summary Table -->
+        <div class="card overflow-hidden">
+          <div class="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h4 class="section-label">Batch Summary</h4>
+            <button class="btn-secondary text-[10px]" id="export-csv-btn" disabled>Export CSV <span class="material-symbols-outlined text-sm">table_view</span></button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Detections</th>
+                <th>Novel</th>
+                <th>Top Species</th>
+              </tr>
+            </thead>
+            <tbody id="summary-tbody">
+              <tr>
+                <td colspan="4" class="text-center text-gray-400 py-8">No results — run detection to populate this table.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer justify-between">
+  <div class="flex items-center gap-5">
+    <div class="flex items-center gap-2">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+    <div class="flex items-center gap-1.5 border-l border-gray-100 pl-5 text-[10px] font-mono text-gray-400">
+      Job: <span id="job-display" class="text-gray-600 ml-1">—</span>
+    </div>
+  </div>
+  <span class="status-text text-gray-400" id="footer-right">Ready</span>
+</footer>
+
+<script type="module">
+import { connectJob, initDropZone, setStatus, exportCSV, buildDetCard } from '/ui/app.js';
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+[['conf-input','conf-label'],['nms-input','nms-label']].forEach(([id,lid]) => {
+    const el = document.getElementById(id);
+    const lbl = document.getElementById(lid);
+    if (el && lbl) el.addEventListener('input', () => lbl.textContent = parseFloat(el.value).toFixed(2));
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFiles = [];
+let csvRows       = [];
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFiles = files;
+    document.getElementById('drop-zone-info').textContent =
+        files.length + ' file(s) selected';
+    document.getElementById('queue-count').textContent = files.length + ' images';
+    const empty = document.getElementById('queue-empty');
+    const list  = document.getElementById('queue-list');
+    empty.classList.add('hidden');
+    list.classList.remove('hidden');
+    list.innerHTML = '';
+    files.forEach(f => {
+        const li = document.createElement('li');
+        li.textContent = f.name;
+        list.appendChild(li);
+    });
+});
+
+// ── Run Detection ─────────────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', async () => {
+    if (!selectedFiles.length) { alert('Please select images first.'); return; }
+
+    const jobId  = crypto.randomUUID();
+    csvRows      = [];
+    const runBtn = document.getElementById('run-btn');
+    runBtn.disabled    = true;
+    runBtn.textContent = 'Running…';
+    setStatus('busy', 'Running inference…', jobId);
+
+    // Clear previous results
+    document.getElementById('detection-empty').classList.remove('hidden');
+    document.getElementById('detection-list').classList.add('hidden');
+    document.getElementById('detection-list').innerHTML = '';
+    document.getElementById('summary-tbody').innerHTML =
+        '<tr><td colspan="4" class="text-center text-gray-400 py-8">Running…</td></tr>';
+
+    // Open WS first
+    connectJob(jobId, {
+        onCompleted: (msg) => {
+            addResultRow(msg);
+        },
+        onDone: async (msg) => {
+            if (msg.results_url) {
+                try {
+                    const r       = await fetch(msg.results_url);
+                    const data    = await r.json();
+                    const results = data.results || [];
+                    populateSummaryTable(results);
+                    buildCSVRows(results);
+
+                    // Replace inline rows with collapsible bbox cards
+                    const fileMap = {};
+                    selectedFiles.forEach(f => fileMap[f.name] = f);
+                    const list = document.getElementById('detection-list');
+                    list.innerHTML = '';
+                    list.classList.remove('hidden');
+                    document.getElementById('detection-empty').classList.add('hidden');
+                    results.forEach(r => {
+                        const file = fileMap[r.filename];
+                        list.appendChild(buildDetCard(
+                            file ? URL.createObjectURL(file) : null,
+                            r.filename,
+                            r.detections || []
+                        ));
+                    });
+                } catch {}
+            }
+            document.getElementById('export-csv-btn').disabled  = false;
+            document.getElementById('export-all-btn').disabled  = false;
+            setStatus('live', 'Complete', jobId);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+        },
+        onError: (msg) => {
+            setStatus('idle', 'Error', null);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+        },
+    });
+
+    const fd = new FormData();
+    selectedFiles.forEach(f => fd.append('images', f));
+    fd.append('job_id', jobId);
+
+    try {
+        const res = await fetch('/infer', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+        setStatus('idle', 'Error', null);
+        runBtn.disabled    = false;
+        runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Detection';
+    }
+});
+
+// ── Per-image result row ──────────────────────────────────────────────────────
+function addResultRow(msg) {
+    const empty = document.getElementById('detection-empty');
+    const list  = document.getElementById('detection-list');
+    empty.classList.add('hidden');
+    list.classList.remove('hidden');
+
+    const div = document.createElement('div');
+    div.className = 'px-4 py-3 flex items-center justify-between text-xs';
+    div.innerHTML = `
+        <span class="font-mono text-gray-700 truncate max-w-[50%]">${msg.filename}</span>
+        <span class="text-gray-500">${msg.detection_count ?? 0} detections</span>
+        <span class="text-amber-600">${msg.novel_count ?? 0} novel</span>`;
+    list.appendChild(div);
+}
+
+// ── Summary Table ─────────────────────────────────────────────────────────────
+function populateSummaryTable(results) {
+    const tbody = document.getElementById('summary-tbody');
+    if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-8">No detections.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = results.map(r => {
+        const top = r.detections?.[0]?.taxonomy?.species ?? '—';
+        return `<tr>
+            <td class="font-mono">${r.filename}</td>
+            <td>${r.detections?.length ?? 0}</td>
+            <td>${r.detections?.filter(d => d.is_novel).length ?? 0}</td>
+            <td>${top}</td>
+        </tr>`;
+    }).join('');
+}
+
+function buildCSVRows(results) {
+    csvRows = results.flatMap(r => (r.detections || []).map(d => ({
+        filename:   r.filename,
+        confidence: d.confidence,
+        species:    d.taxonomy?.species ?? '',
+        is_novel:   d.is_novel,
+    })));
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+document.getElementById('export-csv-btn').addEventListener('click', () =>
+    exportCSV(csvRows, 'detections.csv'));
+
+document.getElementById('export-all-btn').addEventListener('click', () =>
+    exportCSV(csvRows, 'all_detections.csv'));
+</script>
+</body>
+</html>

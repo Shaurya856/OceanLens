@@ -4,8 +4,8 @@ from typing import Dict, List
 import streamlit as st
 from PIL import Image
 
-from pipelines import run_single, run_custom
-from registry import TECHNIQUES
+from enhancement.pipelines import run_single, run_custom
+from enhancement.registry import TECHNIQUES
 
 
 PRESET_PIPELINES: Dict[str, Dict] = {

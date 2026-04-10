@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Video Enhancement</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item active" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search datasets..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main px-8">
+  <div class="max-w-[900px] pt-8">
+    <header class="mb-8">
+      <h2 class="page-title">Video Enhancement Pipeline</h2>
+      <p class="page-subtitle">Extract frames and apply enhancement techniques end-to-end.</p>
+    </header>
+
+    <!-- Stepper -->
+    <div class="flex items-center mb-10">
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle current">1</div>
+        <span class="section-label">Upload Video</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle">2</div>
+        <span class="section-label text-gray-300">Configure</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="step-circle">3</div>
+        <span class="section-label text-gray-300">Results</span>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="card card-body-md mb-6">
+      <label class="drop-zone" id="drop-zone">
+        <span class="material-symbols-outlined drop-zone-icon">movie</span>
+        <h3>Drop video here or click to browse</h3>
+        <p>MP4, MOV, AVI, MKV — up to 2 GB</p>
+        <div class="mt-3 flex items-center gap-3 text-[11px] text-gray-400">
+          <span>Sample FPS:</span>
+          <span class="font-mono bg-white border border-gray-200 px-2 py-0.5 rounded" id="fps-display">2.0 FPS</span>
+        </div>
+        <input type="file" accept="video/*" class="hidden" id="file-input"/>
+      </label>
+      <div class="mt-4 space-y-1.5">
+        <div class="field-row"><label class="field-label">Sample FPS</label><span class="field-value" id="fps-label2">2.0</span></div>
+        <input type="range" min="0.5" max="30" step="0.5" value="2.0" id="fps-slider"/>
+        <div class="flex justify-between text-[10px] text-gray-400"><span>0.5</span><span>15</span><span>30</span></div>
+      </div>
+    </div>
+
+    <!-- Config Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+
+      <!-- Denoise -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">Denoise</span><input checked type="checkbox" class="checkbox" id="v-denoise-check"/></div>
+        <div>
+          <div class="field-row"><label class="field-label">Sigma: <span id="v-denoise">15</span></label></div>
+          <input type="range" min="0" max="50" value="15" id="v-denoise-input"/>
+        </div>
+      </div>
+
+      <!-- CLAHE -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">CLAHE</span><input checked type="checkbox" class="checkbox" id="v-clahe-check"/></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="section-label block mb-1">Clip Limit</label><input class="form-input-sm" type="text" value="3.0" id="v-clahe-clip"/></div>
+          <div><label class="section-label block mb-1">Tile</label><input class="form-input-sm" type="text" value="8x8" id="v-clahe-tile"/></div>
+        </div>
+      </div>
+
+      <!-- Gamma -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">Gamma Correction</span><input type="checkbox" class="checkbox" id="vg-check"/></div>
+        <div>
+          <div class="field-row"><label class="field-label">Value: <span id="v-gamma">1.2</span>γ</label></div>
+          <input type="range" min="0.5" max="3.0" step="0.1" value="1.2" disabled id="vg-input"/>
+        </div>
+      </div>
+
+      <!-- White Balance -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">White Balance</span><input checked type="checkbox" class="checkbox" id="v-wb-check"/></div>
+        <div>
+          <label class="section-label block mb-1">Preset</label>
+          <select class="form-select"><option>Gray World</option><option>White Patch</option><option>Learning-Based</option></select>
+        </div>
+      </div>
+
+      <!-- Dehaze -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">Dehaze</span><input checked type="checkbox" class="checkbox" id="v-dehaze-check"/></div>
+        <div>
+          <div class="field-row"><label class="field-label">Strength: <span id="v-dehaze">0.70</span></label></div>
+          <input type="range" min="0" max="1" step="0.05" value="0.7" id="v-dehaze-input"/>
+        </div>
+      </div>
+
+      <!-- Retinex -->
+      <div class="technique-card space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">Retinex</span><input type="checkbox" class="checkbox" id="vr-check"/></div>
+        <div>
+          <label class="section-label block mb-1">Method</label>
+          <select class="form-select opacity-40" disabled id="vr-method"><option>MSRCR</option><option>MSRCP</option><option>GIMP</option></select>
+        </div>
+      </div>
+
+      <!-- Super Resolution -->
+      <div class="technique-card md:col-span-3 space-y-3">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold text-gray-900">Super Resolution</span><input checked type="checkbox" class="checkbox" id="v-sr-check"/></div>
+        <div class="flex gap-2" id="v-sr-scales">
+          <button class="btn-scale active">2×</button>
+          <button class="btn-scale">4×</button>
+          <button class="btn-scale">8×</button>
+        </div>
+      </div>
+
+    </div>
+
+    <button class="btn-primary w-full py-3.5" id="start-btn">
+      <span class="material-symbols-outlined text-sm">play_arrow</span>Start Enhancement Pipeline
+    </button>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer justify-between">
+  <div class="flex items-center gap-5">
+    <div class="flex items-center gap-2">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+    <div class="flex items-center gap-4 border-l border-gray-100 pl-5 text-[10px] font-mono text-gray-400">
+      <span>Job: <span class="text-gray-600" id="job-display">—</span></span>
+    </div>
+  </div>
+  <div class="flex items-center gap-4">
+    <div class="space-y-0.5 w-32">
+      <div class="flex justify-between text-[9px] text-gray-500"><span>Progress</span><span id="progress-pct">0%</span></div>
+      <div class="progress-track h-1"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    </div>
+    <button class="btn-secondary text-xs" id="download-all-btn" disabled>Download All</button>
+    <span class="status-text text-gray-400" id="footer-right">Ready</span>
+  </div>
+</footer>
+
+<script type="module">
+import {
+    connectJob, initDropZone, updateProgress,
+    setStatus, triggerDownload, collectEnhancement,
+} from '/ui/app.js';
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+const fpsSlider  = document.getElementById('fps-slider');
+const fpsLabel2  = document.getElementById('fps-label2');
+const fpsDisplay = document.getElementById('fps-display');
+fpsSlider.addEventListener('input', () => {
+    const v = parseFloat(fpsSlider.value).toFixed(1);
+    fpsLabel2.textContent  = v;
+    fpsDisplay.textContent = v + ' FPS';
+});
+
+[['v-denoise-input','v-denoise', v => Math.round(v)],
+ ['v-dehaze-input', 'v-dehaze',  v => parseFloat(v).toFixed(2)],
+ ['vg-input',       'v-gamma',   v => parseFloat(v).toFixed(1)],
+].forEach(([id, lid, fmt]) => {
+    const el = document.getElementById(id);
+    const lbl = document.getElementById(lid);
+    if (el && lbl) el.addEventListener('input', () => lbl.textContent = fmt(el.value));
+});
+
+document.getElementById('vg-check').addEventListener('change', (e) => {
+    document.getElementById('vg-input').disabled = !e.target.checked;
+});
+
+document.getElementById('vr-check').addEventListener('change', (e) => {
+    const el = document.getElementById('vr-method');
+    el.disabled = !e.target.checked;
+    el.classList.toggle('opacity-40', !e.target.checked);
+});
+
+document.getElementById('v-sr-scales').querySelectorAll('.btn-scale').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('v-sr-scales').querySelectorAll('.btn-scale')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFile  = null;
+let completedFiles = [];
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFile = files[0];
+    document.getElementById('fps-display').textContent =
+        parseFloat(fpsSlider.value).toFixed(1) + ' FPS';
+    document.querySelector('#drop-zone h3').textContent = selectedFile.name;
+});
+
+// ── Start Pipeline ────────────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', async () => {
+    if (!selectedFile) { alert('Please select a video file first.'); return; }
+
+    const { techniques, params } = collectEnhancement({
+        denoiseCheck: 'v-denoise-check',  denoiseSlider: 'v-denoise-input',
+        claheCheck:   'v-clahe-check',    claheClip: 'v-clahe-clip', claheTile: 'v-clahe-tile',
+        gammaCheck:   'vg-check',         gammaSlider: 'vg-input',
+        wbCheck:      'v-wb-check',
+        dehazeCheck:  'v-dehaze-check',   dehazeSlider: 'v-dehaze-input',
+        retinexCheck: 'vr-check',         retinexScales: null,
+        srCheck:      'v-sr-check',       srScaleGroup: 'v-sr-scales',
+    });
+
+    const jobId    = crypto.randomUUID();
+    completedFiles = [];
+    let totalFrames = 0;
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled    = true;
+    startBtn.textContent = 'Running…';
+    document.getElementById('download-all-btn').disabled = true;
+    updateProgress('progress-fill', 'progress-pct', 0, 1);
+    setStatus('busy', 'Extracting frames…', jobId);
+
+    connectJob(jobId, {
+        onProgress: (msg) => {
+            if (msg.total_frames) totalFrames = msg.total_frames;
+            setStatus('busy', msg.status.replace('_', ' '), jobId);
+        },
+        onFrameDone: (msg) => {
+            completedFiles.push({ filename: msg.filename, download_url: msg.download_url });
+            updateProgress('progress-fill', 'progress-pct', msg.frame_index + 1, msg.total_frames);
+            document.getElementById('footer-right').textContent =
+                (msg.frame_index + 1) + '/' + msg.total_frames + ' frames';
+        },
+        onDone: (msg) => {
+            setStatus('live', 'Complete — ' + completedFiles.length + ' frames', jobId);
+            document.getElementById('download-all-btn').disabled = false;
+            startBtn.disabled    = false;
+            startBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Start Enhancement Pipeline';
+        },
+        onError: (msg) => {
+            setStatus('idle', 'Error', null);
+            startBtn.disabled    = false;
+            startBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Start Enhancement Pipeline';
+        },
+    });
+
+    const fd = new FormData();
+    fd.append('video',      selectedFile);
+    fd.append('job_id',     jobId);
+    fd.append('sample_fps', fpsSlider.value);
+    fd.append('techniques', JSON.stringify(techniques));
+    fd.append('params',     JSON.stringify(params));
+
+    try {
+        const res = await fetch('/pipeline/video/enhance', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+        setStatus('idle', 'Error', null);
+        startBtn.disabled    = false;
+        startBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Start Enhancement Pipeline';
+    }
+});
+
+// ── Download All ──────────────────────────────────────────────────────────────
+document.getElementById('download-all-btn').addEventListener('click', () => {
+    completedFiles.forEach(({ filename, download_url }) =>
+        triggerDownload(download_url, filename));
+});
+</script>
+</body>
+</html>

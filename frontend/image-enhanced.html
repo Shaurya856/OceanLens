@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Image Enhancement</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item active" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search datasets..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main px-8">
+  <div class="max-w-[1100px] pt-8">
+    <header class="mb-8">
+      <h2 class="page-title">Image Enhancement</h2>
+      <p class="page-subtitle">Apply scientific enhancement pipelines to marine imagery datasets.</p>
+    </header>
+
+    <div class="grid grid-cols-12 gap-6">
+      <!-- Left: Upload + Techniques -->
+      <div class="col-span-12 lg:col-span-7 space-y-6">
+
+        <!-- Upload -->
+        <div class="card card-body-md">
+          <h3 class="card-title mb-4"><span class="material-symbols-outlined text-sm">cloud_upload</span>Upload Images</h3>
+          <label class="drop-zone" id="drop-zone">
+            <span class="material-symbols-outlined drop-zone-icon">upload_file</span>
+            <h3>Drag and drop imaging datasets here</h3>
+            <p class="text-xs text-gray-500" id="drop-zone-info">TIFF, PNG, RAW — up to 2 GB per session</p>
+            <input type="file" accept="image/*" multiple class="hidden" id="file-input"/>
+          </label>
+        </div>
+
+        <!-- Enhancement Techniques -->
+        <section class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-gray-900">Enhancement Techniques</h3>
+            <span class="badge">Pro Pipeline</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+            <!-- Denoise -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">filter_alt</span><span class="text-xs font-bold text-gray-900">Denoise</span></div>
+                <input type="checkbox" checked class="checkbox" id="denoise-check"/>
+              </div>
+              <div class="space-y-1.5">
+                <div class="field-row"><span class="field-label">Sigma Level</span><span class="field-value" id="denoise-label">15σ</span></div>
+                <input type="range" min="0" max="50" value="15" id="denoise-input"/>
+              </div>
+            </div>
+
+            <!-- CLAHE -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">equalizer</span><span class="text-xs font-bold text-gray-900">CLAHE</span></div>
+                <input type="checkbox" checked class="checkbox" id="clahe-check"/>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1"><label class="section-label block">Clip Limit</label><input class="form-input-sm" type="text" value="3.0" id="clahe-clip"/></div>
+                <div class="space-y-1"><label class="section-label block">Tile Size</label><input class="form-input-sm" type="text" value="8x8" id="clahe-tile"/></div>
+              </div>
+            </div>
+
+            <!-- Gamma -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">exposure</span><span class="text-xs font-bold text-gray-900">Gamma Correction</span></div>
+                <input type="checkbox" class="checkbox" id="gamma-check"/>
+              </div>
+              <div class="space-y-1.5">
+                <div class="field-row"><span class="field-label">Correction</span><span class="field-value" id="gamma-label">1.2γ</span></div>
+                <input type="range" min="0.5" max="3.0" step="0.1" value="1.2" disabled id="gamma-input"/>
+              </div>
+            </div>
+
+            <!-- White Balance -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">palette</span><span class="text-xs font-bold text-gray-900">White Balance</span></div>
+                <input type="checkbox" checked class="checkbox" id="wb-check"/>
+              </div>
+              <select class="form-select">
+                <option>Gray World</option><option>White Patch</option><option>Learning-Based</option>
+              </select>
+            </div>
+
+            <!-- Dehaze -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">blur_off</span><span class="text-xs font-bold text-gray-900">Dehaze</span></div>
+                <input type="checkbox" checked class="checkbox" id="dehaze-check"/>
+              </div>
+              <div class="space-y-1.5">
+                <div class="field-row"><span class="field-label">Strength</span><span class="field-value" id="dehaze-label">0.70</span></div>
+                <input type="range" min="0" max="1" step="0.05" value="0.7" id="dehaze-input"/>
+              </div>
+            </div>
+
+            <!-- Retinex -->
+            <div class="technique-card space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">architecture</span><span class="text-xs font-bold text-gray-900">Retinex</span></div>
+                <input type="checkbox" class="checkbox" id="retinex-check"/>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <select class="form-select opacity-40" disabled id="retinex-method"><option>MSRCR</option><option>MSRCP</option><option>GIMP</option></select>
+                <input class="form-input-sm opacity-40" disabled placeholder="15, 80, 250" type="text" id="retinex-scales"/>
+              </div>
+            </div>
+
+            <!-- Super Resolution -->
+            <div class="technique-card md:col-span-2 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">hd</span><span class="text-xs font-bold text-gray-900">Super Resolution</span></div>
+                <input type="checkbox" checked class="checkbox" id="sr-check"/>
+              </div>
+              <div class="flex gap-2" id="sr-scale-group">
+                <button class="btn-scale active">2× Scale</button>
+                <button class="btn-scale">4× Scale</button>
+                <button class="btn-scale">8× Scale</button>
+              </div>
+            </div>
+
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: Status + Log -->
+      <div class="col-span-12 lg:col-span-5">
+        <div class="sticky top-[72px] space-y-4">
+
+          <!-- Processing Status -->
+          <div class="card overflow-hidden">
+            <div class="card-header">
+              <h3 class="card-title">Processing Status</h3>
+              <span class="flex items-center gap-1.5 status-text"><span class="status-dot"></span>Idle</span>
+            </div>
+            <div class="card-body-md space-y-5">
+              <div class="space-y-1.5">
+                <div class="field-row"><span class="field-label text-gray-500" id="progress-label">Ready to process</span><span class="field-value" id="progress-pct">0%</span></div>
+                <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-gray-50 p-3 border border-gray-100 rounded"><p class="section-label mb-1">Queue Size</p><p class="text-lg font-bold text-gray-900" id="queue-size">—</p></div>
+                <div class="bg-gray-50 p-3 border border-gray-100 rounded"><p class="section-label mb-1">Completed</p><p class="text-lg font-bold text-gray-900" id="completed-count">—</p></div>
+              </div>
+              <div class="space-y-2">
+                <button class="btn-primary w-full" id="start-btn">Start Enhancement</button>
+                <button class="btn-secondary w-full justify-center" id="cancel-btn">Cancel Job</button>
+              </div>
+              <div class="bg-gray-50 border border-gray-100 rounded p-3 flex gap-2">
+                <span class="material-symbols-outlined text-gray-400 text-sm mt-0.5">info</span>
+                <p class="text-[10px] text-gray-500 leading-relaxed">Processing speed varies based on dataset size and selected techniques.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Log -->
+          <div class="card card-body">
+            <h3 class="section-label mb-2">Live Log</h3>
+            <div class="log-terminal" id="log-terminal">
+              <p>[--:--:--] Waiting for input...</p>
+              <p class="animate-pulse">_</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <section class="mt-10 pt-8 border-t border-gray-200">
+      <div class="flex items-end justify-between mb-6">
+        <div>
+          <h3 class="text-base font-bold text-gray-900">Processed Results</h3>
+          <p class="page-subtitle">Enhanced images from the current session.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-secondary" id="export-csv-btn" disabled><span class="material-symbols-outlined text-sm">table_view</span>Export CSV</button>
+          <button class="btn-primary" id="download-all-btn" disabled><span class="material-symbols-outlined text-sm">download_for_offline</span>Download All</button>
+        </div>
+      </div>
+      <div class="card" id="results-container">
+        <div class="empty-state py-16" id="results-empty">
+          <span class="material-symbols-outlined">photo_filter</span>
+          <p>No results yet</p>
+          <span>Upload images and start enhancement to see results here.</span>
+        </div>
+        <div class="hidden p-4 grid grid-cols-2 md:grid-cols-4 gap-3" id="results-grid"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer justify-between">
+  <div class="flex items-center gap-5">
+    <div class="flex items-center gap-2">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+    <div class="flex items-center gap-1.5 border-l border-gray-100 pl-5">
+      <span class="text-[10px] text-gray-400 font-mono">Job:</span>
+      <span class="text-[10px] font-mono text-gray-600" id="job-display">—</span>
+    </div>
+  </div>
+  <span class="status-text text-gray-400" id="footer-right">Ready</span>
+</footer>
+
+<script type="module">
+import {
+    connectJob, initDropZone, updateProgress,
+    setStatus, log, triggerDownload, exportCSV, collectEnhancement,
+} from '/ui/app.js';
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+[['denoise-input', 'denoise-label', v => Math.round(v) + 'σ'],
+ ['dehaze-input',  'dehaze-label',  v => parseFloat(v).toFixed(2)],
+ ['gamma-input',   'gamma-label',   v => parseFloat(v).toFixed(1) + 'γ'],
+].forEach(([id, lid, fmt]) => {
+    const el = document.getElementById(id);
+    const lbl = document.getElementById(lid);
+    if (el && lbl) el.addEventListener('input', () => lbl.textContent = fmt(el.value));
+});
+
+document.getElementById('gamma-check').addEventListener('change', (e) => {
+    document.getElementById('gamma-input').disabled = !e.target.checked;
+});
+
+document.getElementById('retinex-check').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    ['retinex-method', 'retinex-scales'].forEach(id => {
+        const el = document.getElementById(id);
+        el.disabled = !on;
+        el.classList.toggle('opacity-40', !on);
+    });
+});
+
+document.querySelectorAll('#sr-scale-group .btn-scale').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#sr-scale-group .btn-scale').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFiles = [];
+let activeWs      = null;
+let csvRows       = [];
+let completedFiles = [];
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFiles = files;
+    document.getElementById('drop-zone-info').textContent =
+        files.length + ' file' + (files.length > 1 ? 's' : '') + ' selected';
+    document.getElementById('queue-size').textContent = files.length;
+    log('log-terminal', `${files.length} file(s) queued.`);
+});
+
+// ── Start Enhancement ─────────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', async () => {
+    if (!selectedFiles.length) { alert('Please select images first.'); return; }
+
+    const { techniques, params } = collectEnhancement({
+        denoiseCheck: 'denoise-check',  denoiseSlider: 'denoise-input',
+        claheCheck:   'clahe-check',    claheClip: 'clahe-clip', claheTile: 'clahe-tile',
+        gammaCheck:   'gamma-check',    gammaSlider: 'gamma-input',
+        wbCheck:      'wb-check',
+        dehazeCheck:  'dehaze-check',   dehazeSlider: 'dehaze-input',
+        retinexCheck: 'retinex-check',  retinexScales: 'retinex-scales',
+        srCheck:      'sr-check',       srScaleGroup: 'sr-scale-group',
+    });
+
+    if (!techniques.length) { alert('Enable at least one enhancement technique.'); return; }
+
+    const jobId = crypto.randomUUID();
+    csvRows       = [];
+    completedFiles = [];
+
+    const startBtn  = document.getElementById('start-btn');
+    startBtn.disabled    = true;
+    startBtn.textContent = 'Running…';
+    document.getElementById('results-empty').classList.remove('hidden');
+    document.getElementById('results-grid').classList.add('hidden');
+    document.getElementById('results-grid').innerHTML = '';
+    updateProgress('progress-fill', 'progress-pct', 0, selectedFiles.length);
+    document.getElementById('completed-count').textContent = '0/' + selectedFiles.length;
+    setStatus('busy', 'Enhancing…', jobId);
+    log('log-terminal', `Job ${jobId} started — ${techniques.join(', ')}`);
+
+    // Open WS before POST
+    activeWs = connectJob(jobId, {
+        onProgress: (msg) => log('log-terminal', 'Status: ' + msg.status),
+        onCompleted: (msg) => {
+            const done = csvRows.length + 1;
+            completedFiles.push({ filename: msg.filename, download_url: msg.download_url });
+            csvRows.push({ filename: msg.filename, download_url: msg.download_url });
+            updateProgress('progress-fill', 'progress-pct', done, selectedFiles.length);
+            document.getElementById('completed-count').textContent =
+                done + '/' + selectedFiles.length;
+            addResultThumb(jobId, msg.filename, msg.download_url);
+            log('log-terminal', `Done: ${msg.filename}`);
+        },
+        onDone: () => {
+            document.getElementById('download-all-btn').disabled = false;
+            document.getElementById('export-csv-btn').disabled   = false;
+            setStatus('live', 'Complete', jobId);
+            log('log-terminal', 'Job complete.');
+            startBtn.disabled    = false;
+            startBtn.textContent = 'Start Enhancement';
+        },
+        onError: (msg) => {
+            setStatus('idle', 'Error', null);
+            log('log-terminal', 'Error: ' + (msg.error || 'unknown'));
+            startBtn.disabled    = false;
+            startBtn.textContent = 'Start Enhancement';
+        },
+    });
+
+    const fd = new FormData();
+    selectedFiles.forEach(f => fd.append('images', f));
+    fd.append('job_id',     jobId);
+    fd.append('mode',       'custom');
+    fd.append('techniques', JSON.stringify(techniques));
+    fd.append('params',     JSON.stringify(params));
+
+    try {
+        const res = await fetch('/enhance', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    } catch (e) {
+        log('log-terminal', 'Request failed: ' + e.message);
+        setStatus('idle', 'Error', null);
+        startBtn.disabled    = false;
+        startBtn.textContent = 'Start Enhancement';
+        activeWs?.close();
+    }
+});
+
+// ── Cancel ────────────────────────────────────────────────────────────────────
+document.getElementById('cancel-btn').addEventListener('click', () => {
+    activeWs?.close();
+    setStatus('idle', 'Cancelled', null);
+    log('log-terminal', 'Job cancelled.');
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled    = false;
+    startBtn.textContent = 'Start Enhancement';
+});
+
+// ── Result Thumbnails ─────────────────────────────────────────────────────────
+function addResultThumb(jobId, filename, downloadUrl) {
+    const empty = document.getElementById('results-empty');
+    const grid  = document.getElementById('results-grid');
+    empty.classList.add('hidden');
+    grid.classList.remove('hidden');
+
+    const div = document.createElement('div');
+    div.className = 'relative group rounded overflow-hidden border border-gray-200 cursor-pointer';
+    div.innerHTML = `
+        <img src="${downloadUrl}" class="w-full aspect-square object-cover bg-gray-100"
+             loading="lazy" onerror="this.style.background='#f3f4f6'"/>
+        <div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <button class="bg-white text-gray-800 text-xs px-2 py-1 rounded shadow">Download</button>
+        </div>
+        <p class="text-[9px] text-gray-400 font-mono px-1 py-0.5 truncate">${filename}</p>`;
+    div.querySelector('button').addEventListener('click', () =>
+        triggerDownload(downloadUrl, filename));
+    grid.appendChild(div);
+}
+
+// ── Download All ──────────────────────────────────────────────────────────────
+document.getElementById('download-all-btn').addEventListener('click', () => {
+    completedFiles.forEach(({ filename, download_url }) =>
+        triggerDownload(download_url, filename));
+});
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+document.getElementById('export-csv-btn').addEventListener('click', () => {
+    exportCSV(csvRows, 'enhancement_results.csv');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Video Frames</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item active" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search datasets..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main px-8">
+  <div class="max-w-[1100px] pt-8">
+    <header class="mb-8">
+      <h2 class="page-title">Extract Video Frames</h2>
+      <p class="page-subtitle">High-fidelity frame extraction for scientific marine analysis.</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Upload + Settings -->
+      <div class="lg:col-span-1 space-y-4">
+
+        <!-- Drop zone -->
+        <label class="drop-zone" id="drop-zone">
+          <span class="material-symbols-outlined drop-zone-icon">movie</span>
+          <h3>Drop video here or click to browse</h3>
+          <p>MP4, MOV, AVI, MKV — up to 2 GB</p>
+          <input type="file" accept="video/*" class="hidden" id="file-input"/>
+        </label>
+
+        <!-- Settings -->
+        <div class="card card-body-md">
+          <h3 class="section-label mb-5">Extraction Settings</h3>
+          <div class="space-y-6">
+            <div class="space-y-2">
+              <div class="field-row">
+                <label class="field-label">Frames Per Second</label>
+                <span class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-700" id="fps-label">2.0 FPS</span>
+              </div>
+              <input max="30" min="0.1" step="0.1" type="range" value="2.0" id="fps-input"/>
+              <div class="flex justify-between text-[10px] text-gray-400 font-medium"><span>0.1</span><span>15</span><span>30</span></div>
+            </div>
+            <div class="space-y-1.5">
+              <label class="field-label block">Max Frames <span class="text-xs font-normal text-gray-400">(optional)</span></label>
+              <input class="form-input" placeholder="No limit" type="number" min="1" id="max-frames-input"/>
+            </div>
+            <button class="btn-primary w-full" id="extract-btn">
+              <span class="material-symbols-outlined text-sm">play_arrow</span>Extract Frames
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Frame Preview -->
+      <div class="lg:col-span-2">
+        <div class="card flex flex-col h-full">
+          <div class="card-header">
+            <h3 class="text-sm font-bold text-gray-900">Extracted Frames</h3>
+            <div class="flex gap-1">
+              <button class="btn-icon"><span class="material-symbols-outlined">grid_view</span></button>
+              <button class="btn-icon" id="download-all-btn" disabled title="Download all frames"><span class="material-symbols-outlined">download</span></button>
+            </div>
+          </div>
+          <div class="p-6 flex-1" id="frame-grid-wrap">
+            <div class="empty-state h-full" id="frame-empty-state">
+              <span class="material-symbols-outlined">video_file</span>
+              <p>No frames extracted yet</p>
+              <span>Upload a video and click Extract Frames to begin.</span>
+            </div>
+            <div class="grid grid-cols-3 gap-3 hidden" id="frame-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer justify-between">
+  <div class="flex items-center gap-5">
+    <div class="flex items-center gap-2">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+    <div class="flex items-center gap-1.5 border-l border-gray-100 pl-5">
+      <span class="text-[10px] text-gray-400 font-mono">Job:</span>
+      <span class="text-[10px] font-mono text-gray-600" id="job-display">—</span>
+    </div>
+  </div>
+  <span class="status-text text-gray-400" id="frame-count-label"></span>
+</footer>
+
+<script type="module">
+import { initDropZone, setStatus, triggerDownload } from '/ui/app.js';
+
+// ── Slider ────────────────────────────────────────────────────────────────────
+const fpsInput = document.getElementById('fps-input');
+const fpsLabel = document.getElementById('fps-label');
+fpsInput.addEventListener('input', () => {
+    fpsLabel.textContent = parseFloat(fpsInput.value).toFixed(1) + ' FPS';
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFile = null;
+let jobFrames    = [];   // [{ filename, job_id }]
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFile = files[0];
+    const zone = document.getElementById('drop-zone');
+    zone.querySelector('h3').textContent = selectedFile.name;
+    zone.querySelector('p').textContent  =
+        (selectedFile.size / 1024 / 1024).toFixed(1) + ' MB';
+});
+
+// ── Extract Frames ────────────────────────────────────────────────────────────
+document.getElementById('extract-btn').addEventListener('click', async () => {
+    if (!selectedFile) { alert('Please select a video file first.'); return; }
+
+    const btn = document.getElementById('extract-btn');
+    btn.disabled    = true;
+    btn.textContent = 'Extracting…';
+    setStatus('busy', 'Extracting frames…', null);
+
+    const fd = new FormData();
+    fd.append('video', selectedFile);
+    fd.append('sample_fps', fpsInput.value);
+    const maxF = document.getElementById('max-frames-input').value;
+    if (maxF) fd.append('max_frames', maxF);
+
+    try {
+        const res = await fetch('/video/ingest', { method: 'POST', body: fd });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || res.statusText);
+        }
+        const data = await res.json();
+        jobFrames = data.frames.map(f => ({ filename: f.filename, job_id: data.job_id }));
+        renderFrameGrid(data.job_id, data.frames);
+        setStatus('live', `${data.frame_count} frames extracted`, data.job_id);
+        document.getElementById('frame-count-label').textContent =
+            data.frame_count + ' frames';
+        document.getElementById('download-all-btn').disabled = false;
+    } catch (e) {
+        alert('Extraction failed: ' + e.message);
+        setStatus('idle', 'Error — ' + e.message, null);
+    } finally {
+        btn.disabled    = false;
+        btn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Extract Frames';
+    }
+});
+
+// ── Frame Grid ────────────────────────────────────────────────────────────────
+function renderFrameGrid(jobId, frames) {
+    const empty = document.getElementById('frame-empty-state');
+    const grid  = document.getElementById('frame-grid');
+    empty.classList.add('hidden');
+    grid.classList.remove('hidden');
+    grid.innerHTML = '';
+
+    frames.forEach((f, i) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'relative group cursor-pointer rounded overflow-hidden border border-gray-200';
+        wrap.innerHTML = `
+            <img src="/frames/${jobId}/${f.filename}"
+                 class="w-full aspect-video object-cover bg-gray-100"
+                 loading="lazy"
+                 onerror="this.style.background='#f3f4f6'"/>
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <button class="bg-white text-gray-800 text-xs px-2 py-1 rounded shadow"
+                        data-filename="${f.filename}" data-job="${jobId}">
+                    Download
+                </button>
+            </div>
+            <p class="text-[9px] text-gray-400 font-mono px-1 py-0.5 truncate">${f.filename}</p>`;
+        wrap.querySelector('button').addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerDownload(`/frames/${jobId}/${f.filename}`, f.filename);
+        });
+        grid.appendChild(wrap);
+    });
+}
+
+// ── Download All ──────────────────────────────────────────────────────────────
+document.getElementById('download-all-btn').addEventListener('click', () => {
+    jobFrames.forEach(({ filename, job_id }) => {
+        triggerDownload(`/frames/${job_id}/${filename}`, filename);
+    });
+});
+</script>
+</body>
+</html>

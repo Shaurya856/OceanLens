@@ -5,3 +5,14 @@ __pycache__/
 /tmp/
 results/
 .DS_Store
+dataset/
+data/images
+/.claude
+/.venv
+/.vscode
+/data
+/frontend/frontend_sample
+/weights
+/checkpoints
+*/__pycache__
+/frontend/build_pages.py

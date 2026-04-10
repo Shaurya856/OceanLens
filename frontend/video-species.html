@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>OceanLens AI — Video Species Detection</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            colors: { secondary: "#6B7280" },
+            fontFamily: { "headline": ["Geist", "sans-serif"] }
+        }
+    }
+}
+</script>
+<link href="/ui/styles.css" rel="stylesheet"/>
+</head>
+<body class="antialiased">
+
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-brand">
+    <h1>OceanLens AI</h1>
+    <p class="section-label mt-0.5">Scientific Imaging</p>
+  </div>
+  <nav class="flex-1 space-y-0.5">
+    <a class="nav-item" href="/ui/index.html"><span class="material-symbols-outlined">video_library</span>Video Frames</a>
+    <a class="nav-item" href="/ui/image-enhanced.html"><span class="material-symbols-outlined">photo_filter</span>Image Enhanced</a>
+    <a class="nav-item" href="/ui/video-enhanced.html"><span class="material-symbols-outlined">movie_filter</span>Video Enhanced</a>
+    <a class="nav-item" href="/ui/image-species-enhanced.html"><span class="material-symbols-outlined">biotech</span>Image Species (Enhanced)</a>
+    <a class="nav-item" href="/ui/image-species-direct.html"><span class="material-symbols-outlined">image_search</span>Image Species (Direct)</a>
+    <a class="nav-item active" href="/ui/video-species.html"><span class="material-symbols-outlined">auto_videocam</span>Video Species</a>
+  </nav>
+</aside>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-search-wrap">
+    <span class="material-symbols-outlined header-search-icon">search</span>
+    <input class="header-search" placeholder="Search detections..." type="text"/>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="header-btn"><span class="material-symbols-outlined">notifications</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">settings</span></button>
+    <button class="header-btn"><span class="material-symbols-outlined">account_circle</span></button>
+  </div>
+</header>
+
+<!-- Main -->
+<main class="app-main">
+
+  <!-- Stepper Bar -->
+  <div class="px-8 py-5 border-b border-gray-200 bg-white">
+    <div class="flex items-center max-w-[900px]">
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle current">1</div>
+        <span class="section-label">Upload</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle">2</div>
+        <span class="section-label text-gray-300">Extract</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle">3</div>
+        <span class="section-label text-gray-300">Enhance</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle">4</div>
+        <span class="section-label text-gray-300">Detect</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle">5</div>
+        <span class="section-label text-gray-300">Review</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <div class="step-circle">6</div>
+        <span class="section-label text-gray-300">Export</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="px-8 pt-6">
+
+    <!-- Stats Row -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="card card-body">
+        <p class="section-label mb-1">Total Frames</p>
+        <h3 class="text-2xl font-bold text-gray-900" id="stat-frames">—</h3>
+      </div>
+      <div class="card card-body">
+        <p class="section-label mb-1">Species Detected</p>
+        <h3 class="text-2xl font-bold text-gray-900" id="stat-species">—</h3>
+      </div>
+      <div class="card card-body">
+        <p class="section-label mb-1">Total Detections</p>
+        <h3 class="text-2xl font-bold text-gray-900" id="stat-detections">—</h3>
+      </div>
+      <div class="card card-body">
+        <p class="section-label mb-1">Novel Species</p>
+        <h3 class="text-2xl font-bold text-gray-900" id="stat-novel">—</h3>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="grid grid-cols-12 gap-6 items-start">
+
+      <!-- Left Panel: Upload + Pipeline Config -->
+      <div class="col-span-12 lg:col-span-4 space-y-4">
+
+        <!-- Upload -->
+        <div class="card card-body-md">
+          <h4 class="card-title mb-3"><span class="material-symbols-outlined text-sm">cloud_upload</span>Upload Video</h4>
+          <label class="drop-zone" id="drop-zone">
+            <span class="material-symbols-outlined drop-zone-icon">video_file</span>
+            <h3>Drop video or click to browse</h3>
+            <p class="text-xs text-gray-500" id="drop-zone-info">MP4, MOV, AVI — up to 4 GB</p>
+            <input type="file" accept="video/*" class="hidden" id="file-input"/>
+          </label>
+        </div>
+
+        <!-- Pipeline Config -->
+        <div class="card card-body-md space-y-4">
+          <h4 class="card-title"><span class="material-symbols-outlined text-sm">tune</span>Pipeline Configuration</h4>
+
+          <!-- Processing FPS -->
+          <div>
+            <div class="field-row"><label class="field-label">Processing FPS</label><span class="field-value" id="proc-fps-lbl">12</span></div>
+            <input type="range" min="1" max="30" value="12" id="proc-fps"/>
+          </div>
+
+          <!-- Enhancement Techniques -->
+          <div>
+            <label class="section-label block mb-2">Enhancement Techniques</label>
+            <div class="space-y-2">
+
+              <!-- Denoise -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">filter_alt</span><span class="text-xs font-bold text-gray-900">Denoise</span></div>
+                  <input type="checkbox" checked class="checkbox" id="vs-denoise-check"/>
+                </div>
+                <div class="space-y-1">
+                  <div class="field-row"><span class="field-label">Sigma Level</span><span class="field-value" id="vs-denoise-lbl">15σ</span></div>
+                  <input type="range" min="0" max="50" value="15" id="vs-denoise"/>
+                </div>
+              </div>
+
+              <!-- CLAHE -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">equalizer</span><span class="text-xs font-bold text-gray-900">CLAHE</span></div>
+                  <input type="checkbox" checked class="checkbox" id="vs-clahe-check"/>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="space-y-1"><label class="section-label block">Clip Limit</label><input class="form-input-sm" type="text" value="3.0" id="vs-clahe-clip"/></div>
+                  <div class="space-y-1"><label class="section-label block">Tile Size</label><input class="form-input-sm" type="text" value="8x8" id="vs-clahe-tile"/></div>
+                </div>
+              </div>
+
+              <!-- Gamma Correction -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">exposure</span><span class="text-xs font-bold text-gray-900">Gamma Correction</span></div>
+                  <input type="checkbox" class="checkbox" id="vs-gamma-check"/>
+                </div>
+                <div class="space-y-1">
+                  <div class="field-row"><span class="field-label">Correction</span><span class="field-value" id="vs-gamma-lbl">1.2γ</span></div>
+                  <input type="range" min="0.5" max="3.0" step="0.1" value="1.2" disabled id="vs-gamma"/>
+                </div>
+              </div>
+
+              <!-- White Balance -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">palette</span><span class="text-xs font-bold text-gray-900">White Balance</span></div>
+                  <input type="checkbox" class="checkbox" id="vs-wb-check"/>
+                </div>
+                <select class="form-select">
+                  <option>Gray World</option><option>White Patch</option><option>Learning-Based</option>
+                </select>
+              </div>
+
+              <!-- Dehaze -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">blur_off</span><span class="text-xs font-bold text-gray-900">Dehaze</span></div>
+                  <input type="checkbox" class="checkbox" id="vs-dehaze-check"/>
+                </div>
+                <div class="space-y-1">
+                  <div class="field-row"><span class="field-label">Strength</span><span class="field-value" id="vs-dehaze-lbl">0.70</span></div>
+                  <input type="range" min="0" max="1" step="0.05" value="0.7" id="vs-dehaze"/>
+                </div>
+              </div>
+
+              <!-- Retinex -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">architecture</span><span class="text-xs font-bold text-gray-900">Retinex</span></div>
+                  <input type="checkbox" class="checkbox" id="vs-retinex-check"/>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <select class="form-select opacity-40" disabled id="vs-retinex-method"><option>MSRCR</option><option>MSRCP</option><option>GIMP</option></select>
+                  <input class="form-input-sm opacity-40" disabled placeholder="15, 80, 250" type="text" id="vs-retinex-scales"/>
+                </div>
+              </div>
+
+              <!-- Super Resolution -->
+              <div class="technique-card space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-400 text-sm">hd</span><span class="text-xs font-bold text-gray-900">Super Resolution</span></div>
+                  <input type="checkbox" class="checkbox" id="vs-sr-check"/>
+                </div>
+                <div class="flex gap-2 opacity-40" id="vs-sr-scales">
+                  <button class="btn-scale active" disabled>2×</button>
+                  <button class="btn-scale" disabled>4×</button>
+                  <button class="btn-scale" disabled>8×</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Detection Settings -->
+          <div>
+            <label class="section-label block mb-2">Detection Settings</label>
+            <div class="space-y-2">
+              <div>
+                <div class="field-row"><label class="field-label">Confidence Threshold</label><span class="field-value" id="vs-conf-lbl">0.45</span></div>
+                <input type="range" min="0" max="1" step="0.01" value="0.45" id="vs-conf"/>
+              </div>
+              <div>
+                <div class="field-row"><label class="field-label">NMS IOU</label><span class="field-value" id="vs-nms-lbl">0.60</span></div>
+                <input type="range" min="0" max="1" step="0.01" value="0.60" id="vs-nms"/>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-primary w-full" id="run-btn">
+            <span class="material-symbols-outlined text-sm">play_arrow</span>Run Full Pipeline
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Right Panel: Frame View + Navigator + Detections -->
+      <div class="col-span-12 lg:col-span-8 space-y-4">
+
+        <!-- Frame View -->
+        <div class="card overflow-hidden">
+          <div class="card-header">
+            <span class="section-label">Frame View</span>
+            <div class="flex items-center gap-2">
+              <button class="btn-icon"><span class="material-symbols-outlined text-sm">zoom_in</span></button>
+              <button class="btn-secondary" id="download-frame-btn" disabled><span class="material-symbols-outlined text-sm">download</span>Download Frame</button>
+              <button class="btn-icon"><span class="material-symbols-outlined text-sm">fullscreen</span></button>
+            </div>
+          </div>
+          <div class="w-full aspect-video bg-gray-50 flex items-center justify-center" id="frame-view-wrap">
+            <div class="empty-state" id="frame-view-empty">
+              <span class="material-symbols-outlined">movie</span>
+              <p>No frame selected</p>
+              <span>Run the pipeline to load frames.</span>
+            </div>
+            <img id="frame-view-img" class="hidden w-full h-full object-contain" alt="Selected frame"/>
+          </div>
+        </div>
+
+        <!-- Frame Navigator -->
+        <div class="card card-body">
+          <div class="flex items-center justify-between mb-3">
+            <span class="section-label">Frame Sequence</span>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-mono text-gray-400" id="frame-count-display">— / —</span>
+              <button class="btn-secondary text-[10px]" id="export-all-btn" disabled><span class="material-symbols-outlined text-sm">download_for_offline</span>Export All</button>
+            </div>
+          </div>
+          <div class="flex gap-2 overflow-x-auto pb-1" id="frame-navigator">
+            <div class="empty-state flex-1 border border-dashed border-gray-200 rounded bg-gray-50 py-6">
+              <p>No frames extracted yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Detections -->
+        <div class="card overflow-hidden">
+          <div class="card-header">
+            <h4 class="card-title">Current Detections</h4>
+            <span class="badge" id="detection-badge">0 Detected</span>
+          </div>
+          <div class="empty-state py-8" id="detection-empty">
+            <span class="material-symbols-outlined">search</span>
+            <p>No detections</p>
+            <span>Detections appear here during pipeline run.</span>
+          </div>
+          <div class="hidden divide-y divide-gray-100 max-h-48 overflow-y-auto" id="detection-panel"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Status Bar -->
+<footer class="app-footer gap-6">
+  <div class="flex items-center gap-2">
+    <span class="status-dot" id="status-dot"></span>
+    <span class="status-text" id="status-text">Ready</span>
+  </div>
+  <div class="flex-1 max-w-xs">
+    <div class="flex justify-between text-[9px] text-gray-500 mb-0.5"><span>Detection Progress</span><span id="det-pct">0%</span></div>
+    <div class="progress-track h-1"><div class="progress-fill" id="det-bar" style="width:0%"></div></div>
+  </div>
+  <div class="flex items-center gap-5 text-[10px] font-mono text-gray-400 ml-auto">
+    <span>Frames: <span class="text-gray-600" id="footer-frames">—</span></span>
+    <span>Job: <span class="text-gray-600" id="job-display">—</span></span>
+  </div>
+</footer>
+
+<script type="module">
+import {
+    connectJob, initDropZone, updateProgress,
+    setStatus, triggerDownload, exportCSV, collectEnhancement,
+} from '/ui/app.js';
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+[['proc-fps',   'proc-fps-lbl',   v => Math.round(v)],
+ ['vs-denoise', 'vs-denoise-lbl', v => Math.round(v) + 'σ'],
+ ['vs-gamma',   'vs-gamma-lbl',   v => parseFloat(v).toFixed(1) + 'γ'],
+ ['vs-dehaze',  'vs-dehaze-lbl',  v => parseFloat(v).toFixed(2)],
+ ['vs-conf',    'vs-conf-lbl',    v => parseFloat(v).toFixed(2)],
+ ['vs-nms',     'vs-nms-lbl',     v => parseFloat(v).toFixed(2)],
+].forEach(([id, lid, fmt]) => {
+    const el = document.getElementById(id);
+    const lbl = document.getElementById(lid);
+    if (el && lbl) el.addEventListener('input', () => lbl.textContent = fmt(el.value));
+});
+
+document.getElementById('vs-gamma-check').addEventListener('change', (e) => {
+    document.getElementById('vs-gamma').disabled = !e.target.checked;
+});
+
+document.getElementById('vs-retinex-check').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    ['vs-retinex-method', 'vs-retinex-scales'].forEach(id => {
+        const el = document.getElementById(id);
+        el.disabled = !on;
+        el.classList.toggle('opacity-40', !on);
+    });
+});
+
+document.getElementById('vs-sr-check').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    const group = document.getElementById('vs-sr-scales');
+    group.classList.toggle('opacity-40', !on);
+    group.querySelectorAll('button').forEach(b => b.disabled = !on);
+});
+
+document.getElementById('vs-sr-scales').querySelectorAll('.btn-scale').forEach(btn => {
+    btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        document.getElementById('vs-sr-scales').querySelectorAll('.btn-scale')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let selectedFile   = null;
+let frameResults   = [];      // [{ frame_index, filename, detection_count, novel_count }]
+let currentJobId   = null;
+let currentFrameIdx = null;
+
+// ── Drop Zone ─────────────────────────────────────────────────────────────────
+initDropZone('drop-zone', 'file-input', (files) => {
+    selectedFile = files[0];
+    document.getElementById('drop-zone-info').textContent = selectedFile.name;
+});
+
+// ── Run Full Pipeline ─────────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', async () => {
+    if (!selectedFile) { alert('Please select a video file first.'); return; }
+
+    const { techniques, params } = collectEnhancement({
+        denoiseCheck: 'vs-denoise-check',  denoiseSlider: 'vs-denoise',
+        claheCheck:   'vs-clahe-check',    claheClip: 'vs-clahe-clip', claheTile: 'vs-clahe-tile',
+        gammaCheck:   'vs-gamma-check',    gammaSlider: 'vs-gamma',
+        wbCheck:      'vs-wb-check',
+        dehazeCheck:  'vs-dehaze-check',   dehazeSlider: 'vs-dehaze',
+        retinexCheck: 'vs-retinex-check',  retinexScales: 'vs-retinex-scales',
+        srCheck:      'vs-sr-check',       srScaleGroup: 'vs-sr-scales',
+    });
+
+    const jobId     = crypto.randomUUID();
+    currentJobId    = jobId;
+    frameResults    = [];
+    currentFrameIdx = null;
+
+    const runBtn = document.getElementById('run-btn');
+    runBtn.disabled    = true;
+    runBtn.textContent = 'Running…';
+
+    // Reset UI
+    ['stat-frames','stat-species','stat-detections','stat-novel'].forEach(id =>
+        document.getElementById(id).textContent = '—');
+    updateProgress('det-bar', 'det-pct', 0, 1);
+    document.getElementById('frame-navigator').innerHTML =
+        '<div class="empty-state flex-1 border border-dashed border-gray-200 rounded bg-gray-50 py-6"><p>Extracting…</p></div>';
+    document.getElementById('detection-empty').classList.remove('hidden');
+    document.getElementById('detection-panel').classList.add('hidden');
+    document.getElementById('detection-panel').innerHTML = '';
+    document.getElementById('detection-badge').textContent = '0 Detected';
+    document.getElementById('footer-frames').textContent  = '—';
+    document.getElementById('job-display').textContent    = jobId;
+    setStatus('busy', 'Extracting frames…', jobId);
+
+    connectJob(jobId, {
+        onProgress: (msg) => {
+            setStatus('busy', msg.status.replace(/_/g, ' '), jobId);
+            if (msg.total_frames) {
+                document.getElementById('stat-frames').textContent = msg.total_frames;
+                document.getElementById('footer-frames').textContent = msg.total_frames;
+            }
+        },
+        onFrameDone: (msg) => {
+            frameResults.push(msg);
+            updateProgress('det-bar', 'det-pct', msg.frame_index + 1, msg.total_frames);
+            document.getElementById('frame-count-display').textContent =
+                (msg.frame_index + 1) + ' / ' + msg.total_frames;
+
+            // Update running stats
+            const totalDet = frameResults.reduce((s, f) => s + (f.detection_count || 0), 0);
+            const totalNov = frameResults.reduce((s, f) => s + (f.novel_count || 0), 0);
+            document.getElementById('stat-detections').textContent = totalDet;
+            document.getElementById('stat-novel').textContent      = totalNov;
+
+            addFrameThumb(msg, jobId);
+        },
+        onDone: async (msg) => {
+            if (msg.results_url) {
+                try {
+                    const r    = await fetch(msg.results_url);
+                    const data = await r.json();
+                    const results = data.results || [];
+                    // Unique species count
+                    const species = new Set(
+                        results.flatMap(r => (r.detections || []).map(d => d.taxonomy?.species)).filter(Boolean)
+                    );
+                    document.getElementById('stat-species').textContent = species.size;
+                    document.getElementById('stat-frames').textContent  = results.length;
+                } catch {}
+            }
+            document.getElementById('export-all-btn').disabled    = false;
+            document.getElementById('download-frame-btn').disabled = currentFrameIdx !== null ? false : true;
+            setStatus('live', 'Complete', jobId);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Full Pipeline';
+        },
+        onError: (msg) => {
+            setStatus('idle', 'Error', null);
+            runBtn.disabled    = false;
+            runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Full Pipeline';
+        },
+    });
+
+    const fd = new FormData();
+    fd.append('video',      selectedFile);
+    fd.append('job_id',     jobId);
+    fd.append('sample_fps', document.getElementById('proc-fps').value);
+    fd.append('techniques', JSON.stringify(techniques));
+    fd.append('params',     JSON.stringify(params));
+
+    try {
+        const res = await fetch('/pipeline/video/detect', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    } catch (e) {
+        alert('Request failed: ' + e.message);
+        setStatus('idle', 'Error', null);
+        runBtn.disabled    = false;
+        runBtn.innerHTML   = '<span class="material-symbols-outlined text-sm">play_arrow</span>Run Full Pipeline';
+    }
+});
+
+// ── Frame Navigator Thumbnails ────────────────────────────────────────────────
+function addFrameThumb(msg, jobId) {
+    const nav = document.getElementById('frame-navigator');
+    // Clear empty state on first frame
+    if (msg.frame_index === 0) nav.innerHTML = '';
+
+    const btn = document.createElement('button');
+    btn.className = 'flex-shrink-0 w-20 rounded overflow-hidden border border-gray-200 hover:border-blue-400 transition text-left';
+    btn.innerHTML = `
+        <div class="w-full aspect-video bg-gray-100 text-[8px] text-gray-400 flex items-center justify-center font-mono">
+            ${msg.frame_index + 1}
+        </div>
+        <p class="text-[8px] text-gray-400 font-mono px-1 py-0.5 truncate">${msg.filename}</p>
+        <p class="text-[8px] text-blue-500 px-1 pb-0.5">${msg.detection_count ?? 0} det</p>`;
+    btn.addEventListener('click', () => selectFrame(msg, jobId));
+    nav.appendChild(btn);
+}
+
+function selectFrame(msg, jobId) {
+    currentFrameIdx = msg.frame_index;
+    // No download URL for detect pipeline frames (only results.json is written)
+    // Show frame info in detection panel
+    document.getElementById('frame-view-empty').classList.add('hidden');
+    const img = document.getElementById('frame-view-img');
+    img.classList.remove('hidden');
+    img.alt = msg.filename;
+    img.src = '';  // detect pipeline doesn't save individual frames — show placeholder
+    img.style.background = '#f3f4f6';
+
+    document.getElementById('detection-empty').classList.add('hidden');
+    const panel = document.getElementById('detection-panel');
+    panel.classList.remove('hidden');
+    panel.innerHTML = `<div class="px-4 py-3 text-xs text-gray-600">
+        <span class="font-mono">${msg.filename}</span> —
+        <span>${msg.detection_count ?? 0} detections</span>,
+        <span class="text-amber-600">${msg.novel_count ?? 0} novel</span>
+    </div>`;
+    document.getElementById('detection-badge').textContent = (msg.detection_count ?? 0) + ' Detected';
+    document.getElementById('download-frame-btn').disabled = false;
+}
+
+// ── Download Frame (not available for detect pipeline — no frame saved to disk)
+document.getElementById('download-frame-btn').addEventListener('click', () => {
+    if (currentFrameIdx === null) return;
+    const fr = frameResults[currentFrameIdx];
+    if (fr) alert('Frame images are not saved by the detect pipeline. Use the Video Enhancement pipeline to download individual frames.');
+});
+
+// ── Export All ────────────────────────────────────────────────────────────────
+document.getElementById('export-all-btn').addEventListener('click', () => {
+    const rows = frameResults.map(f => ({
+        frame_index:     f.frame_index,
+        filename:        f.filename,
+        detection_count: f.detection_count ?? 0,
+        novel_count:     f.novel_count ?? 0,
+    }));
+    exportCSV(rows, 'video_detections.csv');
+});
+</script>
+</body>
+</html>
