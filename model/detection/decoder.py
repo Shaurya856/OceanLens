@@ -7,41 +7,10 @@ cross-attend to this memory over `num_layers` decoder layers.
 
 Output: query embeddings [B, num_queries, d_model].
 """
-import math
 import torch
 import torch.nn as nn
 
-
-# ── Positional encoding ───────────────────────────────────────────────────────
-
-def _make_2d_sinusoidal_pe(
-    h: int, w: int, d_model: int, device: torch.device
-) -> torch.Tensor:
-    """Returns [h*w, d_model] sinusoidal positional encoding."""
-    assert d_model % 4 == 0, "d_model must be divisible by 4 for 2-D sinusoidal PE"
-    d = d_model // 2
-
-    y = torch.arange(h, device=device, dtype=torch.float32).unsqueeze(1)  # [H, 1]
-    x = torch.arange(w, device=device, dtype=torch.float32).unsqueeze(1)  # [W, 1]
-    div = torch.exp(
-        torch.arange(0, d, 2, device=device, dtype=torch.float32)
-        * (-math.log(10_000.0) / d)
-    )
-
-    pe_y = torch.zeros(h, d, device=device)
-    pe_y[:, 0::2] = torch.sin(y * div)
-    pe_y[:, 1::2] = torch.cos(y * div)
-
-    pe_x = torch.zeros(w, d, device=device)
-    pe_x[:, 0::2] = torch.sin(x * div)
-    pe_x[:, 1::2] = torch.cos(x * div)
-
-    # Broadcast and concatenate: [H, W, d_model]
-    pe = torch.cat(
-        [pe_y.unsqueeze(1).expand(h, w, d), pe_x.unsqueeze(0).expand(h, w, d)],
-        dim=-1,
-    )
-    return pe.flatten(0, 1)  # [H*W, d_model]
+from model.detection.tax_decoder import _make_2d_sinusoidal_pe
 
 
 # ── Decoder ───────────────────────────────────────────────────────────────────

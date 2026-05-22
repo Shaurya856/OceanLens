@@ -22,6 +22,34 @@ router = APIRouter()
 ws_manager = WebSocketManager()
 
 
+# ── Shared helpers ─────────────────────────────────────────────────────────────
+
+def _serve_file(job_id: str, filename: str, base_dir: str, not_found_msg: str) -> FileResponse:
+    safe_job_id   = Path(job_id).name
+    safe_filename = Path(filename).name
+    if not safe_job_id or not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid job_id or filename")
+    path = Path(base_dir) / safe_job_id / safe_filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=not_found_msg)
+    return FileResponse(str(path), filename=safe_filename)
+
+
+async def _read_video_request(
+    video: UploadFile,
+    sample_fps: float,
+    job_id: str | None,
+) -> tuple[str, bytes]:
+    if job_id is None:
+        job_id = generate_image_id()
+    if sample_fps <= 0:
+        raise HTTPException(status_code=422, detail="sample_fps must be positive")
+    video_bytes = await video.read()
+    if not video_bytes:
+        raise HTTPException(status_code=422, detail="Uploaded video is empty")
+    return job_id, video_bytes
+
+
 # ── Enhancement pipeline ──────────────────────────────────────────────────────
 
 @router.post("/enhance", status_code=202)
@@ -58,26 +86,12 @@ async def enhance(
 
 @router.get("/frames/{job_id}/{filename}")
 def download_frame(job_id: str, filename: str):
-    safe_job_id   = Path(job_id).name
-    safe_filename = Path(filename).name
-    if not safe_job_id or not safe_filename:
-        raise HTTPException(status_code=400, detail="Invalid job_id or filename")
-    path = Path(FRAMES_DIR) / safe_job_id / safe_filename
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Frame not found")
-    return FileResponse(str(path), filename=safe_filename)
+    return _serve_file(job_id, filename, FRAMES_DIR, "Frame not found")
 
 
 @router.get("/download/{job_id}/{filename}")
 def download_image(job_id: str, filename: str):
-    safe_job_id   = Path(job_id).name
-    safe_filename = Path(filename).name
-    if not safe_job_id or not safe_filename:
-        raise HTTPException(status_code=400, detail="Invalid job_id or filename")
-    path = Path(RESULTS_DIR) / safe_job_id / safe_filename
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(str(path), filename=safe_filename)
+    return _serve_file(job_id, filename, RESULTS_DIR, "File not found")
 
 
 # ── Video ingestion ───────────────────────────────────────────────────────────
@@ -88,14 +102,7 @@ async def ingest_video(
     job_id: str | None = Form(None),
     sample_fps: float = Form(2.0),
 ):
-    if job_id is None:
-        job_id = generate_image_id()
-    if sample_fps <= 0:
-        raise HTTPException(status_code=422, detail="sample_fps must be positive")
-
-    video_bytes = await video.read()
-    if not video_bytes:
-        raise HTTPException(status_code=422, detail="Uploaded video is empty")
+    job_id, video_bytes = await _read_video_request(video, sample_fps, job_id)
 
     loop = asyncio.get_running_loop()
     try:
@@ -175,15 +182,7 @@ async def pipeline_video_enhance(
 ):
     """Video → enhanced frames.  Extraction and enhancement run entirely in
     the backend; the caller receives download URLs for the final enhanced PNGs."""
-    if job_id is None:
-        job_id = generate_image_id()
-    if sample_fps <= 0:
-        raise HTTPException(status_code=422, detail="sample_fps must be positive")
-
-    video_bytes = await video.read()
-    if not video_bytes:
-        raise HTTPException(status_code=422, detail="Uploaded video is empty")
-
+    job_id, video_bytes  = await _read_video_request(video, sample_fps, job_id)
     techniques_list: list = json.loads(techniques)
     params_dict: dict     = json.loads(params)
 
@@ -204,15 +203,7 @@ async def pipeline_video_detect(
     """Video → species detections.  Extraction, optional enhancement, and
     inference all run in the backend.  Pass an empty techniques list to skip
     enhancement and infer on raw frames."""
-    if job_id is None:
-        job_id = generate_image_id()
-    if sample_fps <= 0:
-        raise HTTPException(status_code=422, detail="sample_fps must be positive")
-
-    video_bytes = await video.read()
-    if not video_bytes:
-        raise HTTPException(status_code=422, detail="Uploaded video is empty")
-
+    job_id, video_bytes  = await _read_video_request(video, sample_fps, job_id)
     techniques_list: list = json.loads(techniques)
     params_dict: dict     = json.loads(params)
 

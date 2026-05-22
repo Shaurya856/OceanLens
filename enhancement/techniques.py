@@ -13,13 +13,14 @@ from core.utils import decode_image, encode_image
 
 # ── CLAHE ─────────────────────────────────────────────────────────────────────
 
-def apply_clahe(image: bytes, config: dict = {}) -> bytes:
+def apply_clahe(image: bytes, config: dict | None = None) -> bytes:
     """Contrast Limited Adaptive Histogram Equalization in LAB color space.
 
     Config keys:
         clip_limit: Contrast limiting threshold (default: 2.0).
         tile_size:  Grid size for adaptive regions (default: 8).
     """
+    config = config or {}
     clip_limit = float(config.get("clip_limit", 2.0))
     tile_size  = int(config.get("tile_size", 8))
     tile_size  = max(2, min(tile_size, 64))
@@ -38,7 +39,7 @@ def apply_clahe(image: bytes, config: dict = {}) -> bytes:
 
 # ── Denoise ───────────────────────────────────────────────────────────────────
 
-def apply_denoise(image: bytes, config: dict = {}) -> bytes:
+def apply_denoise(image: bytes, config: dict | None = None) -> bytes:
     """Non-Local Means denoising (colored).
 
     Config keys:
@@ -47,6 +48,7 @@ def apply_denoise(image: bytes, config: dict = {}) -> bytes:
         template_window: Patch size for comparison (default: 7, must be odd).
         search_window:   Search window size (default: 21, must be odd).
     """
+    config = config or {}
     h               = float(config.get("h", 10))
     h_for_color     = float(config.get("h_for_color", 10))
     template_window = int(config.get("template_window", 7))
@@ -68,7 +70,7 @@ def _dark_channel(img: np.ndarray, radius: int) -> np.ndarray:
     return cv2.erode(dark, patch)
 
 
-def apply_dehaze(image: bytes, config: dict = {}) -> bytes:
+def apply_dehaze(image: bytes, config: dict | None = None) -> bytes:
     """Dark Channel Prior dehazing.
 
     Config keys:
@@ -76,6 +78,7 @@ def apply_dehaze(image: bytes, config: dict = {}) -> bytes:
         t0:     Minimum transmission floor (default: 0.1).
         radius: Patch size for dark channel computation (default: 15).
     """
+    config = config or {}
     omega  = float(config.get("omega", 0.95))
     t0     = float(config.get("t0", 0.1))
     radius = int(config.get("radius", 15))
@@ -101,12 +104,13 @@ def apply_dehaze(image: bytes, config: dict = {}) -> bytes:
 
 # ── Gamma correction ──────────────────────────────────────────────────────────
 
-def apply_gamma_correction(image: bytes, config: dict = {}) -> bytes:
+def apply_gamma_correction(image: bytes, config: dict | None = None) -> bytes:
     """Power-law gamma correction: I_out = I_in ^ (1 / gamma).
 
     Config keys:
         gamma: Gamma value — <1 brightens, >1 darkens (default: 1.2).
     """
+    config = config or {}
     gamma = float(config.get("gamma", 1.2))
     gamma = max(0.1, min(gamma, 5.0))
 
@@ -124,13 +128,14 @@ def _single_scale_retinex(img: np.ndarray, sigma: float) -> np.ndarray:
     return np.log10(img) - np.log10(blur)
 
 
-def apply_retinex(image: bytes, config: dict = {}) -> bytes:
+def apply_retinex(image: bytes, config: dict | None = None) -> bytes:
     """Multi-Scale Retinex with Color Restoration (MSRCR).
 
     Config keys:
         sigmas: Gaussian sigma values for each scale (default: [15, 80, 250]).
         alpha:  Color restoration factor (default: 125).
     """
+    config = config or {}
     sigmas = config.get("sigmas", [15, 80, 250])
     if isinstance(sigmas, (int, float)):
         sigmas = [float(sigmas)]
@@ -156,12 +161,13 @@ def apply_retinex(image: bytes, config: dict = {}) -> bytes:
 
 # ── Super-resolution ──────────────────────────────────────────────────────────
 
-def apply_superres(image: bytes, config: dict = {}) -> bytes:
+def apply_superres(image: bytes, config: dict | None = None) -> bytes:
     """Bicubic upscaling (super-resolution via interpolation).
 
     Config keys:
         scale: Upscaling factor between 1.0 and 4.0 (default: 2).
     """
+    config = config or {}
     scale = max(1.0, min(float(config.get("scale", 2)), 4.0))
 
     img  = decode_image(image)
@@ -172,13 +178,14 @@ def apply_superres(image: bytes, config: dict = {}) -> bytes:
 
 # ── White balance ─────────────────────────────────────────────────────────────
 
-def apply_white_balance(image: bytes, config: dict = {}) -> bytes:
+def apply_white_balance(image: bytes, config: dict | None = None) -> bytes:
     """Gray World white balance — scales channels so the mean is neutral gray.
 
     Config keys:
         percent: Percentile to clip before computing the channel mean (default: 1).
                  Higher values reduce influence of extreme highlights/shadows.
     """
+    config = config or {}
     percent = max(0.0, min(float(config.get("percent", 1)), 50.0))
 
     img = decode_image(image).astype(np.float64)

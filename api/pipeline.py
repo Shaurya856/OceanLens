@@ -18,6 +18,7 @@ list to run inference on raw frames / images.
 import asyncio
 import functools
 import json
+import logging
 import os
 from typing import Any
 
@@ -28,7 +29,37 @@ from inference.runner import run_inference
 from video.processor import extract_frames_memory
 from api.websocket_manager import WebSocketManager
 
+logger = logging.getLogger(__name__)
+
+# Pipeline semaphore: limits combined pipeline (enhance + infer) concurrency.
+# Separate from api/scheduler._semaphore (enhancement-only) and
+# inference/scheduler._semaphore (inference-only) — each pool is independently
+# bounded at MAX_CONCURRENCY matching its workload's resource pressure.
 _semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+
+
+async def _extract_frames(
+    video_bytes: bytes,
+    sample_fps: float,
+    job_id: str,
+    ws_manager: WebSocketManager,
+) -> list[dict[str, Any]] | None:
+    """Extract frames in memory; send WS error on failure and return None."""
+    loop = asyncio.get_running_loop()
+    await ws_manager.send(job_id, {"status": "extracting_frames", "job_id": job_id})
+    try:
+        frames: list[dict[str, Any]] = await loop.run_in_executor(
+            None, lambda: extract_frames_memory(video_bytes, sample_fps)
+        )
+    except ValueError as exc:
+        await ws_manager.send(job_id, {"status": "failed", "error": str(exc), "job_id": job_id})
+        return None
+    if not frames:
+        await ws_manager.send(job_id, {
+            "status": "failed", "error": "No frames could be extracted", "job_id": job_id,
+        })
+        return None
+    return frames
 
 
 # ── Video → enhanced frames ───────────────────────────────────────────────────
@@ -42,22 +73,9 @@ async def run_video_enhance_pipeline(
     ws_manager: WebSocketManager,
 ) -> None:
     """Extract frames in memory, enhance each frame, write enhanced PNGs to disk."""
-    loop = asyncio.get_running_loop()
-
-    await ws_manager.send(job_id, {"status": "extracting_frames", "job_id": job_id})
-
-    try:
-        frames: list[dict[str, Any]] = await loop.run_in_executor(
-            None, lambda: extract_frames_memory(video_bytes, sample_fps)
-        )
-    except ValueError as exc:
-        await ws_manager.send(job_id, {"status": "failed", "error": str(exc), "job_id": job_id})
-        return
-
-    if not frames:
-        await ws_manager.send(job_id, {
-            "status": "failed", "error": "No frames could be extracted", "job_id": job_id
-        })
+    loop   = asyncio.get_running_loop()
+    frames = await _extract_frames(video_bytes, sample_fps, job_id, ws_manager)
+    if frames is None:
         return
 
     total   = len(frames)
@@ -127,22 +145,9 @@ async def run_video_detect_pipeline(
     """Extract frames in memory, optionally enhance, run inference.
     Writes results.json to INFER_RESULTS_DIR/{job_id}/.
     """
-    loop = asyncio.get_running_loop()
-
-    await ws_manager.send(job_id, {"status": "extracting_frames", "job_id": job_id})
-
-    try:
-        frames: list[dict[str, Any]] = await loop.run_in_executor(
-            None, lambda: extract_frames_memory(video_bytes, sample_fps)
-        )
-    except ValueError as exc:
-        await ws_manager.send(job_id, {"status": "failed", "error": str(exc), "job_id": job_id})
-        return
-
-    if not frames:
-        await ws_manager.send(job_id, {
-            "status": "failed", "error": "No frames could be extracted", "job_id": job_id
-        })
+    loop   = asyncio.get_running_loop()
+    frames = await _extract_frames(video_bytes, sample_fps, job_id, ws_manager)
+    if frames is None:
         return
 
     total    = len(frames)

@@ -16,12 +16,4 @@ data/images
 /checkpoints
 */__pycache__
 /frontend/build_pages.py
-ap_bar_chart.png
-architecture_diagram.png
-benchmark_results.json
-benchmark.py
-confusion_matrix.png
-enhancement_comparison.png
-generate_report_assets.py
-results_summary.txt
-training_loss_curve.png
+/artifacts

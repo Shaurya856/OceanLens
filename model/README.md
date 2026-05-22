@@ -547,10 +547,17 @@ with torch.no_grad():
 # out["is_novel"]     → [1, 50]
 ```
 
-To use SeabedLite via the inference runner (auto-selected by env var):
+SeabedLite is loaded automatically when `weights/detector_lite.pt` exists and `weights/detector.pt` does not. Just start the server normally:
 
 ```bash
-USE_LITE_MODEL=1 uvicorn main:app --port 8000
+uvicorn main:app --port 8000
+```
+
+To force a specific model regardless of which weights are present:
+
+```bash
+USE_LITE_MODEL=1 uvicorn main:app --port 8000   # force lite
+USE_LITE_MODEL=0 uvicorn main:app --port 8000   # force full
 ```
 
 ---

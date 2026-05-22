@@ -21,12 +21,8 @@ import torch.nn.functional as F
 from torchvision.ops import generalized_box_iou, sigmoid_focal_loss
 
 from core.config import TAXONOMY_LEVELS
+from core.utils import cxcywh_to_xyxy
 from train.matcher import match_batch
-
-
-def _cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
-    cx, cy, w, h = boxes.unbind(-1)
-    return torch.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dim=-1)
 
 
 # Auxiliary loss weights per taxonomy level (coarse → fine)
@@ -143,8 +139,8 @@ class DetectionLoss(nn.Module):
             )
 
             # GIoU box loss
-            pred_xyxy = _cxcywh_to_xyxy(matched_pred_boxes)
-            gt_xyxy   = _cxcywh_to_xyxy(matched_gt_boxes)
+            pred_xyxy = cxcywh_to_xyxy(matched_pred_boxes)
+            gt_xyxy   = cxcywh_to_xyxy(matched_gt_boxes)
             giou = generalized_box_iou(pred_xyxy, gt_xyxy)
             loss_giou = loss_giou + self.lambda_giou * (
                 (1 - giou.diag()).sum() / num_gt
@@ -159,3 +155,69 @@ class DetectionLoss(nn.Module):
             "loss_conf": loss_conf,
             "total":     total,
         }
+
+
+# ── Phylogenetic Consistency Loss (TaxDETR) ───────────────────────────────────
+
+class PhylogeneticConsistencyLoss(nn.Module):
+    """
+    Penalises predictions where the predicted species is inconsistent with
+    the predicted phylum, enforcing self-consistency across taxonomy levels.
+
+    For each query the predicted species implies an expected phylum via the
+    known taxonomy tree.  If the predicted phylum contradicts this expectation
+    we add a cross-entropy penalty pushing the phylum logits toward agreement.
+
+    This differs from a standard classification loss: it uses *predicted*
+    species (not GT) to derive the expected phylum, creating a soft coupling
+    between the two heads that improves intra-model consistency.
+
+    Novelty: VL-Taxon (arXiv 2601.14610) enforces hierarchy via KL divergence
+    on a text taxonomy but does not use predicted-level cross-consistency in a
+    detection context with biological taxonomy trees.
+
+    Args:
+        species_to_phylum: Mapping {species_idx: phylum_idx} for all species.
+        weight:            Loss coefficient (default 0.5).
+    """
+
+    def __init__(
+        self,
+        species_to_phylum: dict[int, int],
+        weight: float = 0.5,
+    ) -> None:
+        super().__init__()
+        self.weight = weight
+
+        # Build a tensor lookup [max_species_idx+1] → phylum_idx
+        max_sp = max(species_to_phylum.keys()) + 1
+        sp_to_ph = torch.zeros(max_sp, dtype=torch.long)
+        for sp, ph in species_to_phylum.items():
+            sp_to_ph[sp] = ph
+        self.register_buffer("sp_to_ph", sp_to_ph)
+
+    def forward(
+        self,
+        class_logits: dict[str, torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Args:
+            class_logits: {level: [B, N, C]} raw logits from TaxDETR.
+        Returns:
+            Scalar consistency loss.
+        """
+        phylum_logits  = class_logits["phylum"]   # [B, N, n_phyla]
+        species_logits = class_logits["species"]  # [B, N, n_species]
+
+        with torch.no_grad():
+            pred_sp = species_logits.argmax(dim=-1)                    # [B, N]
+            pred_sp = pred_sp.clamp(0, self.sp_to_ph.shape[0] - 1)
+            expected_ph = self.sp_to_ph[pred_sp]                       # [B, N]
+
+        B, N, C = phylum_logits.shape
+        loss = F.cross_entropy(
+            phylum_logits.reshape(B * N, C),
+            expected_ph.reshape(B * N),
+            reduction="mean",
+        )
+        return self.weight * loss

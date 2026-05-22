@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,9 +7,14 @@ from api.routes import router, ws_manager
 
 app = FastAPI()
 
+# CORS — set CORS_ALLOW_ORIGINS to a comma-separated list of origins in production.
+# Defaults to "*" for local development.
+_raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
+_allow_origins = [o.strip() for o in _raw_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

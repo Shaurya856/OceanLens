@@ -15,11 +15,7 @@ import torch
 from scipy.optimize import linear_sum_assignment
 from torchvision.ops import generalized_box_iou
 
-
-def _cxcywh_to_xyxy(boxes: torch.Tensor) -> torch.Tensor:
-    """(cx, cy, w, h) → (x1, y1, x2, y2)  — all normalised."""
-    cx, cy, w, h = boxes.unbind(-1)
-    return torch.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dim=-1)
+from core.utils import cxcywh_to_xyxy
 
 
 @torch.no_grad()
@@ -52,8 +48,8 @@ def hungarian_match(
     cost_l1    = torch.cdist(pred_boxes, gt_boxes, p=1)       # [N, M]
 
     # ── GIoU box cost ─────────────────────────────────────────────────────────
-    pred_xyxy  = _cxcywh_to_xyxy(pred_boxes)                  # [N, 4]
-    gt_xyxy    = _cxcywh_to_xyxy(gt_boxes)                    # [M, 4]
+    pred_xyxy  = cxcywh_to_xyxy(pred_boxes)                  # [N, 4]
+    gt_xyxy    = cxcywh_to_xyxy(gt_boxes)                    # [M, 4]
     # generalized_box_iou returns [N, M]
     giou_mat   = generalized_box_iou(pred_xyxy, gt_xyxy)
     cost_giou  = 1.0 - giou_mat                               # [N, M]

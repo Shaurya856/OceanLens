@@ -1,8 +1,8 @@
 """
-Two-phase training loop for SeabedDetector.
+Two-phase training loop for SeabedDetector / SeabedLite / TaxDETR / TaxDETR-Lite.
 
 Phase 1 — Backbone frozen  (epochs 0 … warmup_epochs-1)
-    Only BiFPN, decoder, and all heads are trained.
+    Only neck, decoder, and all heads are trained.
     Larger effective LR is safe since backbone features are stable.
 
 Phase 2 — Full fine-tune    (epochs warmup_epochs … total_epochs-1)
@@ -13,17 +13,18 @@ Checkpoints
 ───────────
 Saved to  {checkpoint_dir}/epoch_{n:03d}.pt  after every epoch.
 Best model (lowest val loss) saved to  {checkpoint_dir}/best.pt.
-After training, detector weights are also copied to MODEL_WEIGHTS_PATH
-so the inference pipeline picks them up immediately.
+After training, detector weights are also copied to the appropriate
+weights path so the inference pipeline picks them up immediately.
 
 Prototype update
 ────────────────
-After Phase 2 completes, one pass over the training set is made to
-populate novelty_detector.prototypes from real embedding distributions.
+After Phase 2 completes (SeabedDetector only), one pass over the
+training set populates novelty_detector.prototypes from real embedding
+distributions.  TaxDETR variants use InterLevelDisagreementDetector
+which requires no prototype fitting.
 """
 import logging
 import os
-import sys
 
 import torch
 import torch.nn as nn
@@ -35,11 +36,15 @@ from core.config import (
     MODEL_WEIGHTS_PATH,
     LITE_WEIGHTS_PATH,
     TAXONOMY_LEVELS,
+    TAXDETR_WEIGHTS_PATH,
+    TAXDETR_LITE_WEIGHTS_PATH,
+    TAXDETR_SPECIES_TO_PHYLUM,
 )
+from core.utils import get_device
 from model.detector import SeabedDetector
 from train.dataset import SeabedDataset, collate_fn
 from train.augmentations import UnderwaterAugmentation
-from train.loss import DetectionLoss
+from train.loss import DetectionLoss, PhylogeneticConsistencyLoss
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -48,7 +53,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # ── Optimizer builders ────────────────────────────────────────────────────────
 
 def _build_optimizer(
-    model: SeabedDetector,
+    model: nn.Module,
     backbone_lr: float,
     head_lr: float,
     weight_decay: float,
@@ -56,8 +61,8 @@ def _build_optimizer(
 ) -> AdamW:
     """
     Parameter groups:
-      • Backbone (ConvNeXt + Swin)     → backbone_lr  (or 0 when frozen)
-      • Everything else                 → head_lr
+      • Backbone                           → backbone_lr  (or 0 when frozen)
+      • Everything else                    → head_lr
 
     Bias and LayerNorm parameters are excluded from weight decay.
     """
@@ -88,7 +93,12 @@ def _build_optimizer(
 def _autocast(device: torch.device):
     """Return the appropriate autocast context for the device."""
     if device.type == "cuda":
-        return torch.autocast("cuda", dtype=torch.float16)
+        # BF16 is native on Ampere (SM≥80) and has a wider dynamic range than
+        # FP16 — no overflow risk, no GradScaler needed.  Fall back to FP16 on
+        # older Volta/Turing cards (SM<80) where BF16 is not supported.
+        cap = torch.cuda.get_device_capability(device)[0]
+        dtype = torch.bfloat16 if cap >= 8 else torch.float16
+        return torch.autocast("cuda", dtype=dtype)
     if device.type == "mps":
         return torch.autocast("mps", dtype=torch.bfloat16)
     return torch.autocast("cpu", enabled=False)
@@ -103,6 +113,7 @@ def _train_epoch(
     criterion: DetectionLoss,
     device: torch.device,
     scaler: "torch.cuda.GradScaler | None" = None,
+    phylo_criterion: "PhylogeneticConsistencyLoss | None" = None,
     max_norm: float = 0.1,
 ) -> dict[str, float]:
     model.train()
@@ -114,7 +125,11 @@ def _train_epoch(
 
         with ac:
             outputs = model(images)
-            losses  = criterion(outputs, targets)
+            losses  = dict(criterion(outputs, targets))
+            if phylo_criterion is not None:
+                loss_phylo = phylo_criterion(outputs["class_logits"])
+                losses["loss_phylo"] = loss_phylo
+                losses["total"] = losses["total"] + loss_phylo
 
         optimizer.zero_grad(set_to_none=True)
         if scaler is not None:
@@ -141,6 +156,7 @@ def _val_epoch(
     loader: DataLoader,
     criterion: DetectionLoss,
     device: torch.device,
+    phylo_criterion: "PhylogeneticConsistencyLoss | None" = None,
 ) -> dict[str, float]:
     model.eval()
     totals: dict[str, float] = {}
@@ -150,12 +166,30 @@ def _val_epoch(
         images = images.to(device)
         with ac:
             outputs = model(images)
-            losses  = criterion(outputs, targets)
+            losses  = dict(criterion(outputs, targets))
+            if phylo_criterion is not None:
+                loss_phylo = phylo_criterion(outputs["class_logits"])
+                losses["loss_phylo"] = loss_phylo
+                losses["total"] = losses["total"] + loss_phylo
         for k, v in losses.items():
             totals[k] = totals.get(k, 0.0) + v.item()
 
     n = len(loader)
     return {k: v / n for k, v in totals.items()}
+
+
+def _log_losses(epoch: int, total_epochs: int, train: dict, val: dict) -> None:
+    extras = "  ".join(
+        f"{k}={val[k]:.4f}"
+        for k in ("loss_cls", "loss_l1", "loss_giou", "loss_conf", "loss_phylo")
+        if k in val
+    )
+    logger.info(
+        "Epoch %3d/%d  train=%.4f  val=%.4f  (%s)",
+        epoch + 1, total_epochs,
+        train["total"], val["total"],
+        extras,
+    )
 
 
 # ── Prototype population ──────────────────────────────────────────────────────
@@ -186,8 +220,6 @@ def _update_prototypes(
             if not mask.any():
                 continue
             emb = embeddings[b][mask]
-            # Use ground-truth species labels (training phase, GT is known)
-            # Only use embeddings whose argmax matches a GT label
             pred_sp = species_pred[b][mask]
             gt_flat = gt_species.unique()
             valid = torch.isin(pred_sp, gt_flat)
@@ -198,16 +230,50 @@ def _update_prototypes(
     logger.info("Prototypes updated for %d species", (model.novelty.prototype_counts > 0).sum().item())
 
 
-# ── Main trainer ──────────────────────────────────────────────────────────────
+# ── Model factory ─────────────────────────────────────────────────────────────
 
-def build_model(taxonomy_sizes: dict[str, int], lite: bool = False) -> nn.Module:
+def build_model(
+    taxonomy_sizes: dict[str, int],
+    lite: bool = False,
+    taxdetr: bool = False,
+    taxdetr_lite: bool = False,
+) -> nn.Module:
     """
-    Factory — returns SeabedLite (for laptop demo) or SeabedDetector (full).
+    Factory — returns one of four model variants.
 
     Args:
         taxonomy_sizes: {level: num_classes} derived from the dataset.
-        lite:           If True, returns SeabedLite (~4M params, MPS-friendly).
+        lite:           SeabedLite (~4M params, MPS-friendly, Gen 1).
+        taxdetr:        TaxDETR full (~85M params, novel architecture, Gen 2).
+        taxdetr_lite:   TaxDETR-Lite (~5M params, novel architecture, Gen 2).
     """
+    if taxdetr_lite:
+        from model.taxdetr_lite import TaxDETRLite
+        from core.config import (
+            TAXDETR_LITE_D_MODEL, TAXDETR_LITE_NUM_QUERIES,
+            TAXDETR_LITE_CONF_THRESHOLD, TAXDETR_LITE_DISAGREE_THRESH,
+        )
+        return TaxDETRLite(
+            taxonomy_sizes=taxonomy_sizes,
+            d_model=TAXDETR_LITE_D_MODEL,
+            num_queries=TAXDETR_LITE_NUM_QUERIES,
+            conf_threshold=TAXDETR_LITE_CONF_THRESHOLD,
+            disagree_threshold=TAXDETR_LITE_DISAGREE_THRESH,
+        )
+    if taxdetr:
+        from model.taxdetr import TaxDETR
+        from core.config import (
+            TAXDETR_D_MODEL, TAXDETR_NUM_QUERIES,
+            TAXDETR_BIFPN_ITERS, TAXDETR_CONF_THRESHOLD, TAXDETR_DISAGREE_THRESH,
+        )
+        return TaxDETR(
+            taxonomy_sizes=taxonomy_sizes,
+            d_model=TAXDETR_D_MODEL,
+            num_queries=TAXDETR_NUM_QUERIES,
+            bifpn_iters=TAXDETR_BIFPN_ITERS,
+            conf_threshold=TAXDETR_CONF_THRESHOLD,
+            disagree_threshold=TAXDETR_DISAGREE_THRESH,
+        )
     if lite:
         from model.lite.detector_lite import SeabedLite
         from core.config import (
@@ -238,16 +304,13 @@ def train(
     num_workers: int = 0,
     max_samples: int | None = None,
     lite: bool = False,
+    taxdetr: bool = False,
+    taxdetr_lite: bool = False,
+    compile_model: bool = False,
 ) -> None:
     os.makedirs(checkpoint_dir, exist_ok=True)
-    os.makedirs(os.path.dirname(MODEL_WEIGHTS_PATH) or ".", exist_ok=True)
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = get_device()
     logger.info("Training on %s", device)
 
     # ── Dataset ───────────────────────────────────────────────────────────────
@@ -256,14 +319,14 @@ def train(
         image_dir=image_dir,
         transforms=UnderwaterAugmentation(),
     )
+    # Persist vocabulary once so the inference runner can load it later.
+    full_dataset.save_vocabulary()
 
-    # Capture taxonomy vocab before any subsetting
     taxonomy_sizes = {
         level: len(full_dataset.taxonomy_labels[level])
         for level in TAXONOMY_LEVELS
     }
 
-    # Optionally cap dataset size (e.g. smoke-test)
     if max_samples is not None and max_samples < len(full_dataset):
         indices = torch.randperm(len(full_dataset))[:max_samples].tolist()
         full_dataset = Subset(full_dataset, indices)
@@ -272,12 +335,11 @@ def train(
     n_train = len(full_dataset) - n_val
     train_set, val_set = random_split(full_dataset, [n_train, n_val])
 
-    # Validation set should not have augmentations — re-create without them
     val_dataset   = SeabedDataset(annotation_path=annotation_path, image_dir=image_dir)
     val_set_clean = Subset(val_dataset, val_set.indices)
 
-    pin      = torch.cuda.is_available()   # pin_memory unsupported on MPS / CPU
-    persist  = num_workers > 0             # keep worker processes alive between epochs
+    pin     = torch.cuda.is_available()
+    persist = num_workers > 0
     train_loader = DataLoader(
         train_set, batch_size=batch_size, shuffle=True,
         num_workers=num_workers, collate_fn=collate_fn,
@@ -290,14 +352,47 @@ def train(
     )
 
     # ── Model + loss ──────────────────────────────────────────────────────────
-    model = build_model(taxonomy_sizes, lite=lite).to(device)
+    is_taxdetr_variant = taxdetr or taxdetr_lite
+    model = build_model(
+        taxonomy_sizes,
+        lite=lite,
+        taxdetr=taxdetr,
+        taxdetr_lite=taxdetr_lite,
+    ).to(device)
+
     criterion = DetectionLoss()
-    weights_out = LITE_WEIGHTS_PATH if lite else MODEL_WEIGHTS_PATH
-    logger.info("Model: %s  |  Output weights: %s", "SeabedLite" if lite else "SeabedDetector", weights_out)
 
-    # GradScaler only on CUDA (MPS does not support it)
-    scaler = torch.cuda.GradScaler() if device.type == "cuda" else None
+    # PhylogeneticConsistencyLoss is only used for TaxDETR variants
+    phylo_criterion: PhylogeneticConsistencyLoss | None = None
+    if is_taxdetr_variant:
+        phylo_criterion = PhylogeneticConsistencyLoss(
+            species_to_phylum=TAXDETR_SPECIES_TO_PHYLUM
+        ).to(device)
 
+    if taxdetr_lite:
+        weights_out = TAXDETR_LITE_WEIGHTS_PATH
+        model_name  = "TaxDETR-Lite"
+    elif taxdetr:
+        weights_out = TAXDETR_WEIGHTS_PATH
+        model_name  = "TaxDETR"
+    elif lite:
+        weights_out = LITE_WEIGHTS_PATH
+        model_name  = "SeabedLite"
+    else:
+        weights_out = MODEL_WEIGHTS_PATH
+        model_name  = "SeabedDetector"
+
+    logger.info("Model: %s  |  Output weights: %s", model_name, weights_out)
+
+    if compile_model:
+        logger.info("Compiling model with torch.compile (first epoch will be slower) …")
+        model = torch.compile(model)
+
+    # GradScaler is only needed for FP16 (overflow risk).
+    # Ampere+ (SM≥80) uses BF16 which has a wider dynamic range — skip the scaler.
+    cuda_cap = torch.cuda.get_device_capability(device)[0] if device.type == "cuda" else 0
+    use_fp16 = device.type == "cuda" and cuda_cap < 8
+    scaler = torch.cuda.GradScaler() if use_fp16 else None
     best_val_loss = float("inf")
 
     # ── Phase 1: frozen backbone ───────────────────────────────────────────────
@@ -306,28 +401,20 @@ def train(
         param.requires_grad_(False)
 
     optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=True)
-    scheduler = CosineAnnealingLR(optimizer, T_max=warmup_epochs, eta_min=head_lr * 0.1)
+    scheduler = CosineAnnealingLR(optimizer, T_max=max(1, warmup_epochs), eta_min=head_lr * 0.1)
 
     for epoch in range(warmup_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_losses   = _val_epoch(model, val_loader, criterion, device)
+        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler, phylo_criterion)
+        val_losses   = _val_epoch(model, val_loader, criterion, device, phylo_criterion)
         scheduler.step()
 
-        logger.info(
-            "Epoch %3d/%d  train=%.4f  val=%.4f  (cls=%.4f l1=%.4f giou=%.4f conf=%.4f)",
-            epoch + 1, total_epochs,
-            train_losses["total"], val_losses["total"],
-            val_losses["loss_cls"], val_losses["loss_l1"],
-            val_losses["loss_giou"], val_losses["loss_conf"],
-        )
-
+        _log_losses(epoch, total_epochs, train_losses, val_losses)
         _save_checkpoint(model, checkpoint_dir, epoch)
         if val_losses["total"] < best_val_loss:
             best_val_loss = val_losses["total"]
             _save_checkpoint(model, checkpoint_dir, epoch, name="best.pt")
 
     # ── Phase 2: full fine-tune ────────────────────────────────────────────────
-    # Flush all pending MPS ops before the computation graph changes.
     if device.type == "mps":
         torch.mps.synchronize()
         torch.mps.empty_cache()
@@ -336,29 +423,22 @@ def train(
         param.requires_grad_(True)
 
     optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=False)
-    remaining = total_epochs - warmup_epochs
+    remaining = max(1, total_epochs - warmup_epochs)
     scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=backbone_lr * 0.1)
 
     for epoch in range(warmup_epochs, total_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_losses   = _val_epoch(model, val_loader, criterion, device)
+        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler, phylo_criterion)
+        val_losses   = _val_epoch(model, val_loader, criterion, device, phylo_criterion)
         scheduler.step()
 
-        logger.info(
-            "Epoch %3d/%d  train=%.4f  val=%.4f  (cls=%.4f l1=%.4f giou=%.4f conf=%.4f)",
-            epoch + 1, total_epochs,
-            train_losses["total"], val_losses["total"],
-            val_losses["loss_cls"], val_losses["loss_l1"],
-            val_losses["loss_giou"], val_losses["loss_conf"],
-        )
-
+        _log_losses(epoch, total_epochs, train_losses, val_losses)
         _save_checkpoint(model, checkpoint_dir, epoch)
         if val_losses["total"] < best_val_loss:
             best_val_loss = val_losses["total"]
             _save_checkpoint(model, checkpoint_dir, epoch, name="best.pt")
 
-    # ── Prototype population (full model only) ─────────────────────────────────
-    if not lite:
+    # ── Prototype population (SeabedDetector full model only) ─────────────────
+    if not lite and not is_taxdetr_variant:
         logger.info("Populating novelty prototypes from training embeddings …")
         proto_loader = DataLoader(
             SeabedDataset(annotation_path=annotation_path, image_dir=image_dir),
@@ -393,38 +473,77 @@ def _save_checkpoint(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Train SeabedDetector or SeabedLite")
+    parser = argparse.ArgumentParser(
+        description="Train SeabedDetector, SeabedLite, TaxDETR, or TaxDETR-Lite"
+    )
     parser.add_argument("--annotation-path", default="data/annotations.json")
-    parser.add_argument("--image-dir", default="data/images")
-    parser.add_argument("--checkpoint-dir", default="checkpoints")
-    parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--warmup-epochs", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--head-lr", type=float, default=1e-4)
-    parser.add_argument("--backbone-lr", type=float, default=1e-5)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--val-split", type=float, default=0.1)
-    parser.add_argument("--num-workers", type=int, default=2,
-                        help="DataLoader workers (default 2; safe on macOS with this __main__ guard)")
-    parser.add_argument("--max-samples", type=int, default=None,
+    parser.add_argument("--image-dir",        default="data/images")
+    parser.add_argument("--checkpoint-dir",   default="checkpoints")
+    parser.add_argument("--epochs",           type=int,   default=80)
+    parser.add_argument("--warmup-epochs",    type=int,   default=10)
+    parser.add_argument("--batch-size",       type=int,   default=8)
+    parser.add_argument("--head-lr",          type=float, default=1e-4)
+    parser.add_argument("--backbone-lr",      type=float, default=1e-5)
+    parser.add_argument("--weight-decay",     type=float, default=1e-4)
+    parser.add_argument("--val-split",        type=float, default=0.1)
+    parser.add_argument("--num-workers",      type=int,   default=2,
+                        help="DataLoader workers (safe on macOS with this __main__ guard)")
+    parser.add_argument("--max-samples",      type=int,   default=None,
                         help="Cap dataset size for smoke-tests")
-    parser.add_argument("--lite", action="store_true",
-                        help="Train SeabedLite (~4M params) instead of the full model. "
-                             "Recommended for laptop / Apple Silicon MPS.")
+
+    # Model variant (mutually exclusive)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--lite",         action="store_true",
+                       help="Train SeabedLite (~4M params, Gen 1, laptop/MPS)")
+    group.add_argument("--taxdetr",      action="store_true",
+                       help="Train TaxDETR full (~85M params, Gen 2 novel architecture, GPU)")
+    group.add_argument("--taxdetr-lite", action="store_true",
+                       help="Train TaxDETR-Lite (~5M params, Gen 2 novel architecture, laptop/MPS)")
+
+    parser.add_argument("--compile", action="store_true",
+                        help="Wrap model with torch.compile for ~20-30%% throughput gain "
+                             "(requires PyTorch 2.4+; first epoch ~30-60s slower for compilation)")
+    parser.add_argument("--smoke-test", action="store_true",
+                        help="Run 2 epochs on 32 samples to verify the pipeline end-to-end")
+
     args = parser.parse_args()
 
-    train(
-        annotation_path=args.annotation_path,
-        image_dir=args.image_dir,
-        checkpoint_dir=args.checkpoint_dir,
-        total_epochs=args.epochs,
-        warmup_epochs=args.warmup_epochs,
-        batch_size=args.batch_size,
-        head_lr=args.head_lr,
-        backbone_lr=args.backbone_lr,
-        weight_decay=args.weight_decay,
-        val_split=args.val_split,
-        num_workers=args.num_workers,
-        max_samples=args.max_samples,
-        lite=args.lite,
-    )
+    if args.smoke_test:
+        print("Smoke-test mode: 2 epochs, batch=2, 32 samples")
+        train(
+            annotation_path=args.annotation_path,
+            image_dir=args.image_dir,
+            checkpoint_dir=args.checkpoint_dir,
+            total_epochs=2,
+            warmup_epochs=1,
+            batch_size=2,
+            head_lr=args.head_lr,
+            backbone_lr=args.backbone_lr,
+            weight_decay=args.weight_decay,
+            val_split=0.25,
+            num_workers=0,
+            max_samples=32,
+            lite=args.lite,
+            taxdetr=args.taxdetr,
+            taxdetr_lite=args.taxdetr_lite,
+            compile_model=args.compile,
+        )
+    else:
+        train(
+            annotation_path=args.annotation_path,
+            image_dir=args.image_dir,
+            checkpoint_dir=args.checkpoint_dir,
+            total_epochs=args.epochs,
+            warmup_epochs=args.warmup_epochs,
+            batch_size=args.batch_size,
+            head_lr=args.head_lr,
+            backbone_lr=args.backbone_lr,
+            weight_decay=args.weight_decay,
+            val_split=args.val_split,
+            num_workers=args.num_workers,
+            max_samples=args.max_samples,
+            lite=args.lite,
+            taxdetr=args.taxdetr,
+            taxdetr_lite=args.taxdetr_lite,
+            compile_model=args.compile,
+        )

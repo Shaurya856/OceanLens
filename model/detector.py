@@ -21,24 +21,12 @@ Forward output (dict):
 import torch
 import torch.nn as nn
 
+from model._common import _MLP
 from model.detection.backbone import DualPathBackbone
 from model.detection.bifpn import BiFPN
 from model.detection.decoder import DETRDecoder
 from model.classification.classifier import HierarchicalClassifier
 from model.classification.novelty import NoveltyDetector
-
-
-class _MLP(nn.Module):
-    def __init__(self, d_in: int, d_hidden: int, d_out: int) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_in, d_hidden),
-            nn.GELU(),
-            nn.Linear(d_hidden, d_out),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
 
 
 class SeabedDetector(nn.Module):

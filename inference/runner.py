@@ -12,6 +12,7 @@ Post-processing:
 """
 import json
 import os
+import threading
 import uuid
 import logging
 
@@ -69,6 +70,10 @@ _lite_model = None
 _device: torch.device | None = None
 _taxonomy_labels: dict[str, list[str]] | None = None
 
+# Locks prevent double-initialisation when run_in_executor dispatches concurrent callers.
+_model_lock      = threading.Lock()
+_lite_model_lock = threading.Lock()
+
 
 def _load_taxonomy_labels() -> dict[str, list[str]]:
     if os.path.isfile(TAXONOMY_LABELS_PATH):
@@ -96,30 +101,35 @@ def get_model() -> tuple[SeabedDetector, torch.device, dict[str, list[str]]]:
     if _model is not None:
         return _model, _device, _taxonomy_labels  # type: ignore[return-value]
 
-    _device = _get_device()
-    _taxonomy_labels = _load_taxonomy_labels()
+    with _model_lock:
+        if _model is not None:  # re-check after acquiring lock
+            return _model, _device, _taxonomy_labels  # type: ignore[return-value]
 
-    _model = SeabedDetector(
-        taxonomy_sizes=TAXONOMY_SIZES,
-        d_model=MODEL_D_MODEL,
-        num_queries=MODEL_NUM_QUERIES,
-        conf_threshold=NOVELTY_CONF_THRESHOLD,
-        dist_threshold=NOVELTY_DIST_THRESHOLD,
-        pretrained_backbone=True,
-    )
+        _device = _get_device()
+        _taxonomy_labels = _load_taxonomy_labels()
 
-    if os.path.isfile(MODEL_WEIGHTS_PATH):
-        state = torch.load(MODEL_WEIGHTS_PATH, map_location=_device)
-        _model.load_state_dict(state)
-        logger.info("Loaded detector weights from %s", MODEL_WEIGHTS_PATH)
-    else:
-        logger.warning(
-            "No weights found at %s — backbone uses ImageNet pretraining only.",
-            MODEL_WEIGHTS_PATH,
+        _model = SeabedDetector(
+            taxonomy_sizes=TAXONOMY_SIZES,
+            d_model=MODEL_D_MODEL,
+            num_queries=MODEL_NUM_QUERIES,
+            conf_threshold=NOVELTY_CONF_THRESHOLD,
+            dist_threshold=NOVELTY_DIST_THRESHOLD,
+            pretrained_backbone=True,
         )
 
-    _model.to(_device).eval()
-    return _model, _device, _taxonomy_labels
+        if os.path.isfile(MODEL_WEIGHTS_PATH):
+            state = torch.load(MODEL_WEIGHTS_PATH, map_location=_device, weights_only=True)
+            _model.load_state_dict(state)
+            logger.info("Loaded detector weights from %s", MODEL_WEIGHTS_PATH)
+        else:
+            logger.warning(
+                "No weights found at %s — backbone uses ImageNet pretraining only.",
+                MODEL_WEIGHTS_PATH,
+            )
+
+        _model.to(_device).eval()
+
+    return _model, _device, _taxonomy_labels  # type: ignore[return-value]
 
 
 def get_lite_model():
@@ -129,39 +139,44 @@ def get_lite_model():
     if _lite_model is not None:
         return _lite_model, _device, _taxonomy_labels
 
-    from model.lite.detector_lite import SeabedLite
+    with _lite_model_lock:
+        if _lite_model is not None:  # re-check after acquiring lock
+            return _lite_model, _device, _taxonomy_labels
 
-    _device = _get_device()
-    _taxonomy_labels = _load_taxonomy_labels()
+        from model.lite.detector_lite import SeabedLite
 
-    # Use real taxonomy sizes from labels file if available; fall back to config.
-    lite_taxonomy = {
-        level: len(_taxonomy_labels[level])
-        for level in TAXONOMY_LEVELS
-        if level in _taxonomy_labels
-    } or LITE_TAXONOMY_SIZES
+        _device = _get_device()
+        _taxonomy_labels = _load_taxonomy_labels()
 
-    _lite_model = SeabedLite(
-        taxonomy_sizes=lite_taxonomy,
-        d_model=LITE_D_MODEL,
-        num_queries=LITE_NUM_QUERIES,
-        decoder_layers=LITE_DECODER_LAYERS,
-        decoder_heads=LITE_DECODER_HEADS,
-        conf_threshold=NOVELTY_CONF_THRESHOLD,
-        pretrained_backbone=True,
-    )
+        # Use real taxonomy sizes from labels file if available; fall back to config.
+        lite_taxonomy = {
+            level: len(_taxonomy_labels[level])
+            for level in TAXONOMY_LEVELS
+            if level in _taxonomy_labels
+        } or LITE_TAXONOMY_SIZES
 
-    if os.path.isfile(LITE_WEIGHTS_PATH):
-        state = torch.load(LITE_WEIGHTS_PATH, map_location=_device)
-        _lite_model.load_state_dict(state)
-        logger.info("Loaded lite detector weights from %s", LITE_WEIGHTS_PATH)
-    else:
-        logger.warning(
-            "No lite weights found at %s — backbone uses ImageNet pretraining only.",
-            LITE_WEIGHTS_PATH,
+        _lite_model = SeabedLite(
+            taxonomy_sizes=lite_taxonomy,
+            d_model=LITE_D_MODEL,
+            num_queries=LITE_NUM_QUERIES,
+            decoder_layers=LITE_DECODER_LAYERS,
+            decoder_heads=LITE_DECODER_HEADS,
+            conf_threshold=NOVELTY_CONF_THRESHOLD,
+            pretrained_backbone=True,
         )
 
-    _lite_model.to(_device).eval()
+        if os.path.isfile(LITE_WEIGHTS_PATH):
+            state = torch.load(LITE_WEIGHTS_PATH, map_location=_device, weights_only=True)
+            _lite_model.load_state_dict(state)
+            logger.info("Loaded lite detector weights from %s", LITE_WEIGHTS_PATH)
+        else:
+            logger.warning(
+                "No lite weights found at %s — backbone uses ImageNet pretraining only.",
+                LITE_WEIGHTS_PATH,
+            )
+
+        _lite_model.to(_device).eval()
+
     return _lite_model, _device, _taxonomy_labels
 
 

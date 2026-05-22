@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import logging
 import os
 from typing import Any
 
@@ -7,6 +8,8 @@ from enhancement.pipelines import run_single, run_custom
 from core.utils import generate_image_id, build_enhanced_filename
 from api.websocket_manager import WebSocketManager
 from core.config import RESULTS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 async def process_batch(
@@ -56,6 +59,7 @@ async def process_batch(
             })
 
         except Exception as e:
+            logger.error("Enhancement failed for %s in job %s: %s", filename, job_id, e)
             await ws_manager.send(job_id, {
                 "image_id": image_id,
                 "status":   "failed",

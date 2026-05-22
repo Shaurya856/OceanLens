@@ -17,24 +17,12 @@ Inference on M3 MPS (320×320): ~10–20 ms
 import torch
 import torch.nn as nn
 
+from model._common import _MLP
 from model.lite.backbone_lite import LiteBackbone
 from model.lite.neck_lite import LiteFPN
 from model.detection.decoder import DETRDecoder      # fully reused, just smaller params
 from model.classification.classifier import HierarchicalClassifier
 from model.classification.novelty import NoveltyDetector
-
-
-class _MLP(nn.Module):
-    def __init__(self, d_in: int, d_hidden: int, d_out: int) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_in, d_hidden),
-            nn.GELU(),
-            nn.Linear(d_hidden, d_out),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
 
 
 class SeabedLite(nn.Module):

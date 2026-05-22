@@ -11,9 +11,11 @@ numpy>=1.26.0
 
 # ── Deep learning ─────────────────────────────────────────────────────────────
 # CPU wheels shown below. For CUDA, install from https://pytorch.org/get-started
-# e.g.  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-torch>=2.2.0
-torchvision>=0.17.0              # generalized_box_iou, sigmoid_focal_loss, nms
+# e.g.  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch>=2.4.0
+torchvision>=0.19.0              # generalized_box_iou, sigmoid_focal_loss, nms
+# flash-attn>=2.5.0              # optional: ~15% attention speedup on Ampere/Blackwell
+#                                # install separately: pip install flash-attn --no-build-isolation
 
 # Pretrained backbone weights (ConvNeXt-S, Swin-T)
 timm>=0.9.12
@@ -24,3 +26,6 @@ scipy>=1.12.0                    # linear_sum_assignment for Hungarian matching
 # ── Prototype UI ──────────────────────────────────────────────────────────────
 streamlit>=1.33.0
 Pillow>=10.3.0
+
+# ── Docs / diagrams ───────────────────────────────────────────────────────────
+matplotlib>=3.8.0                # scripts/ figure generators

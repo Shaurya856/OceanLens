@@ -77,11 +77,6 @@ class SeabedDataset(Dataset):
             for level, names in self.taxonomy_labels.items()
         }
 
-        # Persist vocabulary so inference_runner can load it
-        os.makedirs(os.path.dirname(TAXONOMY_LABELS_PATH) or ".", exist_ok=True)
-        with open(TAXONOMY_LABELS_PATH, "w") as f:
-            json.dump(self.taxonomy_labels, f, indent=2)
-
         # Index images
         self.images: dict[int, dict] = {img["id"]: img for img in data["images"]}
         self.image_ids: list[int] = [img["id"] for img in data["images"]]
@@ -90,6 +85,17 @@ class SeabedDataset(Dataset):
         self.annotations: dict[int, list[dict]] = {img_id: [] for img_id in self.image_ids}
         for ann in data["annotations"]:
             self.annotations[ann["image_id"]].append(ann)
+
+    def save_vocabulary(self) -> None:
+        """Write taxonomy_labels to TAXONOMY_LABELS_PATH for the inference runner.
+
+        Call this once after constructing the dataset from training annotations.
+        Kept separate from __init__ so instantiating multiple dataset objects
+        (e.g. for validation or prototype passes) doesn't trigger redundant writes.
+        """
+        os.makedirs(os.path.dirname(TAXONOMY_LABELS_PATH) or ".", exist_ok=True)
+        with open(TAXONOMY_LABELS_PATH, "w") as f:
+            json.dump(self.taxonomy_labels, f, indent=2)
 
     # ------------------------------------------------------------------
     def __len__(self) -> int:
