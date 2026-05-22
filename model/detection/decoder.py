@@ -7,10 +7,36 @@ cross-attend to this memory over `num_layers` decoder layers.
 
 Output: query embeddings [B, num_queries, d_model].
 """
+import math
+
 import torch
 import torch.nn as nn
 
-from model.detection.tax_decoder import _make_2d_sinusoidal_pe
+
+def _make_2d_sinusoidal_pe(H: int, W: int, C: int, device) -> torch.Tensor:
+    """Return [H*W, C] 2D sinusoidal positional encodings."""
+    assert C % 2 == 0
+    half = C // 2
+    div = torch.exp(
+        torch.arange(0, half, 2, dtype=torch.float32, device=device)
+        * (-math.log(10000.0) / half)
+    )
+    y = torch.arange(H, dtype=torch.float32, device=device).unsqueeze(1)  # [H, 1]
+    x = torch.arange(W, dtype=torch.float32, device=device).unsqueeze(1)  # [W, 1]
+
+    pe_y = torch.zeros(H, half, device=device)
+    pe_y[:, 0::2] = torch.sin(y * div)
+    pe_y[:, 1::2] = torch.cos(y * div)
+
+    pe_x = torch.zeros(W, half, device=device)
+    pe_x[:, 0::2] = torch.sin(x * div)
+    pe_x[:, 1::2] = torch.cos(x * div)
+
+    pe = torch.cat([
+        pe_y.unsqueeze(1).expand(-1, W, -1),
+        pe_x.unsqueeze(0).expand(H, -1, -1),
+    ], dim=-1)
+    return pe.reshape(H * W, C)
 
 
 # ── Decoder ───────────────────────────────────────────────────────────────────

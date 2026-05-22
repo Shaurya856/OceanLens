@@ -55,37 +55,3 @@ LITE_TAXONOMY_SIZES: dict[str, int] = {
     "family":  23,
     "species": 23,
 }
-
-# ── TaxDETR — novel architecture (full model) ──────────────────────────────────
-TAXDETR_INPUT_SIZE      = 448          # same constraint as SeabedDetector
-TAXDETR_NUM_QUERIES     = 300
-TAXDETR_D_MODEL         = 256
-TAXDETR_BIFPN_ITERS     = 3
-TAXDETR_CONF_THRESHOLD  = 0.5
-TAXDETR_DISAGREE_THRESH = 0.3          # coarse–fine gap to trigger novelty
-TAXDETR_WEIGHTS_PATH    = "weights/taxdetr.pt"
-
-# ── TaxDETR-Lite — novel architecture (lightweight) ────────────────────────────
-TAXDETR_LITE_INPUT_SIZE      = 320
-TAXDETR_LITE_NUM_QUERIES     = 50
-TAXDETR_LITE_D_MODEL         = 128
-TAXDETR_LITE_CONF_THRESHOLD  = 0.5
-TAXDETR_LITE_DISAGREE_THRESH = 0.3
-TAXDETR_LITE_WEIGHTS_PATH    = "weights/taxdetr_lite.pt"
-
-# Taxonomy tree: maps species_idx → phylum_idx.
-# Populated from annotations at runtime; placeholder shown for 23-species lite dataset.
-# Format: {species_idx: phylum_idx, ...}
-# Replace with actual mappings derived from data/annotations.json.
-TAXDETR_SPECIES_TO_PHYLUM: dict[int, int] = {
-    # species 0-4  → phylum 0
-    **{i: 0 for i in range(5)},
-    # species 5-9  → phylum 1
-    **{i: 1 for i in range(5, 10)},
-    # species 10-14 → phylum 2
-    **{i: 2 for i in range(10, 15)},
-    # species 15-19 → phylum 3
-    **{i: 3 for i in range(15, 20)},
-    # species 20-22 → phylum 4
-    **{i: 4 for i in range(20, 23)},
-}

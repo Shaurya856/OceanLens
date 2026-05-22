@@ -1,5 +1,5 @@
 """
-Two-phase training loop for SeabedDetector / SeabedLite / TaxDETR / TaxDETR-Lite.
+Two-phase training loop for SeabedDetector / SeabedLite.
 
 Phase 1 — Backbone frozen  (epochs 0 … warmup_epochs-1)
     Only neck, decoder, and all heads are trained.
@@ -20,8 +20,7 @@ Prototype update
 ────────────────
 After Phase 2 completes (SeabedDetector only), one pass over the
 training set populates novelty_detector.prototypes from real embedding
-distributions.  TaxDETR variants use InterLevelDisagreementDetector
-which requires no prototype fitting.
+distributions.
 """
 import logging
 import os
@@ -36,15 +35,12 @@ from core.config import (
     MODEL_WEIGHTS_PATH,
     LITE_WEIGHTS_PATH,
     TAXONOMY_LEVELS,
-    TAXDETR_WEIGHTS_PATH,
-    TAXDETR_LITE_WEIGHTS_PATH,
-    TAXDETR_SPECIES_TO_PHYLUM,
 )
 from core.utils import get_device
 from model.detector import SeabedDetector
 from train.dataset import SeabedDataset, collate_fn
 from train.augmentations import UnderwaterAugmentation
-from train.loss import DetectionLoss, PhylogeneticConsistencyLoss
+from train.loss import DetectionLoss
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -113,7 +109,7 @@ def _train_epoch(
     criterion: DetectionLoss,
     device: torch.device,
     scaler: "torch.cuda.GradScaler | None" = None,
-    phylo_criterion: "PhylogeneticConsistencyLoss | None" = None,
+    phylo_criterion=None,
     max_norm: float = 0.1,
 ) -> dict[str, float]:
     model.train()
@@ -156,7 +152,7 @@ def _val_epoch(
     loader: DataLoader,
     criterion: DetectionLoss,
     device: torch.device,
-    phylo_criterion: "PhylogeneticConsistencyLoss | None" = None,
+    phylo_criterion=None,
 ) -> dict[str, float]:
     model.eval()
     totals: dict[str, float] = {}
@@ -235,45 +231,14 @@ def _update_prototypes(
 def build_model(
     taxonomy_sizes: dict[str, int],
     lite: bool = False,
-    taxdetr: bool = False,
-    taxdetr_lite: bool = False,
 ) -> nn.Module:
     """
-    Factory — returns one of four model variants.
+    Factory — returns one of two model variants.
 
     Args:
         taxonomy_sizes: {level: num_classes} derived from the dataset.
-        lite:           SeabedLite (~4M params, MPS-friendly, Gen 1).
-        taxdetr:        TaxDETR full (~85M params, novel architecture, Gen 2).
-        taxdetr_lite:   TaxDETR-Lite (~5M params, novel architecture, Gen 2).
+        lite:           SeabedLite (~4M params, MPS-friendly).
     """
-    if taxdetr_lite:
-        from model.taxdetr_lite import TaxDETRLite
-        from core.config import (
-            TAXDETR_LITE_D_MODEL, TAXDETR_LITE_NUM_QUERIES,
-            TAXDETR_LITE_CONF_THRESHOLD, TAXDETR_LITE_DISAGREE_THRESH,
-        )
-        return TaxDETRLite(
-            taxonomy_sizes=taxonomy_sizes,
-            d_model=TAXDETR_LITE_D_MODEL,
-            num_queries=TAXDETR_LITE_NUM_QUERIES,
-            conf_threshold=TAXDETR_LITE_CONF_THRESHOLD,
-            disagree_threshold=TAXDETR_LITE_DISAGREE_THRESH,
-        )
-    if taxdetr:
-        from model.taxdetr import TaxDETR
-        from core.config import (
-            TAXDETR_D_MODEL, TAXDETR_NUM_QUERIES,
-            TAXDETR_BIFPN_ITERS, TAXDETR_CONF_THRESHOLD, TAXDETR_DISAGREE_THRESH,
-        )
-        return TaxDETR(
-            taxonomy_sizes=taxonomy_sizes,
-            d_model=TAXDETR_D_MODEL,
-            num_queries=TAXDETR_NUM_QUERIES,
-            bifpn_iters=TAXDETR_BIFPN_ITERS,
-            conf_threshold=TAXDETR_CONF_THRESHOLD,
-            disagree_threshold=TAXDETR_DISAGREE_THRESH,
-        )
     if lite:
         from model.lite.detector_lite import SeabedLite
         from core.config import (
@@ -304,8 +269,6 @@ def train(
     num_workers: int = 0,
     max_samples: int | None = None,
     lite: bool = False,
-    taxdetr: bool = False,
-    taxdetr_lite: bool = False,
     compile_model: bool = False,
 ) -> None:
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -352,30 +315,11 @@ def train(
     )
 
     # ── Model + loss ──────────────────────────────────────────────────────────
-    is_taxdetr_variant = taxdetr or taxdetr_lite
-    model = build_model(
-        taxonomy_sizes,
-        lite=lite,
-        taxdetr=taxdetr,
-        taxdetr_lite=taxdetr_lite,
-    ).to(device)
+    model = build_model(taxonomy_sizes, lite=lite).to(device)
 
     criterion = DetectionLoss()
 
-    # PhylogeneticConsistencyLoss is only used for TaxDETR variants
-    phylo_criterion: PhylogeneticConsistencyLoss | None = None
-    if is_taxdetr_variant:
-        phylo_criterion = PhylogeneticConsistencyLoss(
-            species_to_phylum=TAXDETR_SPECIES_TO_PHYLUM
-        ).to(device)
-
-    if taxdetr_lite:
-        weights_out = TAXDETR_LITE_WEIGHTS_PATH
-        model_name  = "TaxDETR-Lite"
-    elif taxdetr:
-        weights_out = TAXDETR_WEIGHTS_PATH
-        model_name  = "TaxDETR"
-    elif lite:
+    if lite:
         weights_out = LITE_WEIGHTS_PATH
         model_name  = "SeabedLite"
     else:
@@ -404,8 +348,8 @@ def train(
     scheduler = CosineAnnealingLR(optimizer, T_max=max(1, warmup_epochs), eta_min=head_lr * 0.1)
 
     for epoch in range(warmup_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler, phylo_criterion)
-        val_losses   = _val_epoch(model, val_loader, criterion, device, phylo_criterion)
+        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
+        val_losses   = _val_epoch(model, val_loader, criterion, device)
         scheduler.step()
 
         _log_losses(epoch, total_epochs, train_losses, val_losses)
@@ -427,8 +371,8 @@ def train(
     scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=backbone_lr * 0.1)
 
     for epoch in range(warmup_epochs, total_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler, phylo_criterion)
-        val_losses   = _val_epoch(model, val_loader, criterion, device, phylo_criterion)
+        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
+        val_losses   = _val_epoch(model, val_loader, criterion, device)
         scheduler.step()
 
         _log_losses(epoch, total_epochs, train_losses, val_losses)
@@ -437,8 +381,8 @@ def train(
             best_val_loss = val_losses["total"]
             _save_checkpoint(model, checkpoint_dir, epoch, name="best.pt")
 
-    # ── Prototype population (SeabedDetector full model only) ─────────────────
-    if not lite and not is_taxdetr_variant:
+    # ── Prototype population (SeabedDetector only) ────────────────────────────
+    if not lite:
         logger.info("Populating novelty prototypes from training embeddings …")
         proto_loader = DataLoader(
             SeabedDataset(annotation_path=annotation_path, image_dir=image_dir),
@@ -474,7 +418,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Train SeabedDetector, SeabedLite, TaxDETR, or TaxDETR-Lite"
+        description="Train SeabedDetector or SeabedLite"
     )
     parser.add_argument("--annotation-path", default="data/annotations.json")
     parser.add_argument("--image-dir",        default="data/images")
@@ -493,12 +437,8 @@ if __name__ == "__main__":
 
     # Model variant (mutually exclusive)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--lite",         action="store_true",
-                       help="Train SeabedLite (~4M params, Gen 1, laptop/MPS)")
-    group.add_argument("--taxdetr",      action="store_true",
-                       help="Train TaxDETR full (~85M params, Gen 2 novel architecture, GPU)")
-    group.add_argument("--taxdetr-lite", action="store_true",
-                       help="Train TaxDETR-Lite (~5M params, Gen 2 novel architecture, laptop/MPS)")
+    group.add_argument("--lite", action="store_true",
+                       help="Train SeabedLite (~4M params, laptop/MPS)")
 
     parser.add_argument("--compile", action="store_true",
                         help="Wrap model with torch.compile for ~20-30%% throughput gain "
@@ -524,8 +464,6 @@ if __name__ == "__main__":
             num_workers=0,
             max_samples=32,
             lite=args.lite,
-            taxdetr=args.taxdetr,
-            taxdetr_lite=args.taxdetr_lite,
             compile_model=args.compile,
         )
     else:
@@ -543,7 +481,5 @@ if __name__ == "__main__":
             num_workers=args.num_workers,
             max_samples=args.max_samples,
             lite=args.lite,
-            taxdetr=args.taxdetr,
-            taxdetr_lite=args.taxdetr_lite,
             compile_model=args.compile,
         )

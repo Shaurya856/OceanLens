@@ -23,8 +23,7 @@ Image_API/
 ├── inference/             # Species detection pipeline (model load + batch inference)
 ├── video/                 # Video frame extraction
 ├── model/                 # Neural network architecture
-│   ├── preprocessing/     # UnderwaterPhysicsModule (learnable colour correction)
-│   ├── detection/         # Backbone (ConvNeXt+Swin), BiFPN neck, DETR decoder, TaxDETR components
+│   ├── detection/         # Backbone (ConvNeXt+Swin), BiFPN neck, DETR decoder
 │   ├── classification/    # Hierarchical taxonomy classifier, novelty detectors
 │   └── lite/              # SeabedLite — lightweight variant for laptop/MPS
 ├── train/                 # Training pipeline (supports both SeabedDetector and SeabedLite)
@@ -134,9 +133,7 @@ Navigate to `http://localhost:8501` in your browser.
 
 ## Model variants
 
-Four model variants are available across two generations. All share the same dataset format; the TaxDETR generation adds novel architecture components.
-
-### Generation 1 — SeabedDetector / SeabedLite (baseline)
+Two model variants are available, sharing the same dataset format and training pipeline.
 
 | | SeabedLite | SeabedDetector (full) |
 |---|---|---|
@@ -148,28 +145,6 @@ Four model variants are available across two generations. All share the same dat
 | **Params** | ~3.5–4M | ~83M |
 | **Novelty detection** | Confidence gate only | Confidence gate + prototype distance |
 | **Weights file** | `weights/detector_lite.pt` | `weights/detector.pt` |
-
-### Generation 2 — TaxDETR / TaxDETR-Lite (novel architecture)
-
-| | TaxDETR-Lite | TaxDETR (full) |
-|---|---|---|
-| **Purpose** | Laptop / MPS, novel research | GPU server, publication-quality |
-| **Backbone** | MobileNetV3-Small | ConvNeXt-Small + Swin-Tiny (dual-path) |
-| **Input size** | 320 × 320 | 448 × 448 |
-| **Neck** | LiteFPN (128ch) | BiFPN × 3 iterations (256ch) |
-| **Decoder** | **3 taxonomy stages** (coarse/mid/species) | **5 taxonomy stages** (phylum→class→order→family→species) |
-| **Queries** | 50 — phylum-anchored | 300 — phylum-anchored |
-| **Params** | ~5M | ~85M |
-| **Novelty detection** | **Inter-level disagreement** | **Inter-level disagreement** |
-| **Novelty type** | `novel_species` / `novel_family` / … | `novel_species` / `novel_family` / … |
-| **Weights file** | `weights/taxdetr_lite.pt` | `weights/taxdetr.pt` |
-
-**Novel components in TaxDETR (literature-verified gaps):**
-
-1. **UnderwaterPhysicsModule** — learnable 1×1 colour-mixing + per-channel gain/bias before the backbone models wavelength-dependent attenuation and turbidity.
-2. **Taxonomy-Anchored Queries** — each object query is initialised as `phylum_anchor + per_slot_residual` instead of random embeddings, injecting coarse taxonomic structure from layer 1.
-3. **Taxonomy-Staged Decoder** — each decoder stage corresponds to one taxonomy level; the phylum head consumes stage-1 embeddings, species head consumes stage-5. No prior paper maps decoder layers to biological taxonomy levels.
-4. **Inter-Level Disagreement Novelty** — novelty score is derived from the gap between phylum confidence and species confidence, enabling fine-grained reporting (`novel_species` vs `novel_family` vs `novel_order`).
 
 ---
 
@@ -247,78 +222,6 @@ python -m train.trainer \
 
 Weights are written to `weights/detector.pt` automatically.
 
-### Option C — TaxDETR-Lite (novel architecture, laptop / Apple Silicon MPS)
-
-```bash
-# Smoke-test
-python -m train.trainer --taxdetr-lite \
-    --epochs 1 --max-samples 64
-
-# Recommended run
-python -m train.trainer --taxdetr-lite \
-    --annotation-path data/annotations.json \
-    --image-dir       data/images \
-    --epochs 30 \
-    --warmup-epochs 5 \
-    --batch-size 32
-```
-
-Weights are written to `weights/taxdetr_lite.pt`.
-
-### Option D — TaxDETR full (novel architecture, GPU server)
-
-```bash
-# Smoke-test
-python -m train.trainer --taxdetr \
-    --epochs 1 --max-samples 64
-
-# Full training run
-python -m train.trainer --taxdetr \
-    --annotation-path data/annotations.json \
-    --image-dir       data/images \
-    --epochs 80 \
-    --warmup-epochs 10 \
-    --batch-size 8
-```
-
-Weights are written to `weights/taxdetr.pt`.
-
-> **Phylogenetic consistency loss** — TaxDETR training also optimises `PhylogeneticConsistencyLoss` which enforces that predicted species are consistent with predicted phyla. Update `TAXDETR_SPECIES_TO_PHYLUM` in `core/config.py` with the actual species→phylum mapping from your annotations before training.
-
-### Option E — TaxDETR on NVIDIA Blackwell (RTX PRO 6000 / 96 GB)
-
-The trainer auto-detects Ampere (SM≥80) and newer GPUs and switches to **BF16 autocast** (wider
-dynamic range than FP16, no GradScaler needed).  Use `--compile` to enable `torch.compile` for an
-additional ~20–30 % throughput gain.
-
-```bash
-# Smoke-test (verifies BF16 + compile path)
-python -m train.trainer --taxdetr \
-    --epochs 1 --warmup-epochs 1 --max-samples 64 \
-    --batch-size 32 --num-workers 4 --compile
-
-# Full training run
-python -m train.trainer --taxdetr \
-    --annotation-path data/annotations.json \
-    --image-dir       data/images \
-    --epochs 80 \
-    --warmup-epochs 10 \
-    --batch-size 32 \
-    --num-workers 8 \
-    --compile
-```
-
-**Estimated wall-clock times (RTX PRO 6000, BF16, batch 32):**
-
-| Epochs | Without `--compile` | With `--compile` |
-|---|---|---|
-| 1 smoke-test | ~5–8 min | ~6–9 min (compile warmup) |
-| 80 (recommended) | ~7–11 h | ~5–8 h |
-
-> **Optional FlashAttention-3:** For an additional ~15 % speedup on attention layers, install
-> `flash-attn` separately (see `requirements.txt` comment). PyTorch's SDPA will dispatch to the
-> FlashAttention-3 kernel automatically once the package is present.
-
 ### All CLI flags
 
 ```
@@ -337,9 +240,7 @@ python -m train.trainer [options]
   --num-workers       DataLoader workers         (default: 2; safe on macOS with __main__ guard)
   --max-samples       Cap dataset (smoke-tests)
   --smoke-test        Run 2 epochs on 32 samples to verify the pipeline end-to-end
-  --lite              Train SeabedLite (Gen 1 lightweight)
-  --taxdetr           Train TaxDETR full (Gen 2 novel architecture)
-  --taxdetr-lite      Train TaxDETR-Lite (Gen 2 novel, laptop/MPS)
+  --lite              Train SeabedLite (lightweight, laptop/MPS)
   --compile           torch.compile for ~20-30% GPU speedup (requires PyTorch 2.4+)
 ```
 
