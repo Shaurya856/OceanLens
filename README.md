@@ -226,6 +226,7 @@ python -m train.trainer [options]
   --max-samples       Cap dataset (smoke-tests)
   --smoke-test        Run 2 epochs on 32 samples to verify the pipeline end-to-end
   --lite              Train SeabedLite (lightweight, laptop/MPS)
+  --resume            Path to checkpoint to resume from (e.g. checkpoints/epoch_045.pt)
   --compile           torch.compile for ~20-30% GPU speedup (requires PyTorch 2.4+)
 ```
 
