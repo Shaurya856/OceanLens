@@ -108,7 +108,7 @@ def _train_epoch(
     optimizer: AdamW,
     criterion: DetectionLoss,
     device: torch.device,
-    scaler: "torch.cuda.GradScaler | None" = None,
+    scaler: "torch.amp.GradScaler | None" = None,
     phylo_criterion=None,
     max_norm: float = 0.1,
 ) -> dict[str, float]:
@@ -337,7 +337,7 @@ def train(
     # Ampere+ (SM≥80) uses BF16 which has a wider dynamic range — skip the scaler.
     cuda_cap = torch.cuda.get_device_capability(device)[0] if device.type == "cuda" else 0
     use_fp16 = device.type == "cuda" and cuda_cap < 8
-    scaler = torch.cuda.GradScaler() if use_fp16 else None
+    scaler = torch.amp.GradScaler("cuda") if use_fp16 else None
     best_val_loss = float("inf")
     start_epoch   = 0
 
@@ -437,7 +437,7 @@ def _save_checkpoint(
     model: nn.Module,
     optimizer: AdamW,
     scheduler: CosineAnnealingLR,
-    scaler: "torch.cuda.GradScaler | None",
+    scaler: "torch.amp.GradScaler | None",
     epoch: int,
     best_val_loss: float,
     directory: str,

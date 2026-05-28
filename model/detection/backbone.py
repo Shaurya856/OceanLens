@@ -6,10 +6,16 @@ and frozen during early training. They share the same output channel sizes
 (192 / 384 / 768 at strides 8 / 16 / 32), so element-wise weighted fusion
 is applied at each scale, followed by CBAM attention.
 """
+import os
+
 import torch
 import torch.nn as nn
 import timm
 from core.config import MODEL_INPUT_SIZE
+
+# Optional: set CONVNEXT_LOCAL_WEIGHTS to a folder containing model.safetensors
+# to bypass HuggingFace and load ConvNeXt from disk.
+_CONVNEXT_LOCAL = os.getenv("CONVNEXT_LOCAL_WEIGHTS")
 
 
 # ── Attention ─────────────────────────────────────────────────────────────────
@@ -67,11 +73,16 @@ class DualPathBackbone(nn.Module):
 
     def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
+        if pretrained and _CONVNEXT_LOCAL:
+            _convnext_cfg = {"file": os.path.join(_CONVNEXT_LOCAL, "model.safetensors")}
+        else:
+            _convnext_cfg = {}
         self.convnext = timm.create_model(
             "convnext_small",
             pretrained=pretrained,
             features_only=True,
             out_indices=(1, 2, 3),
+            pretrained_cfg_overlay=_convnext_cfg or None,
         )
         self.swin = timm.create_model(
             "swin_tiny_patch4_window7_224",
