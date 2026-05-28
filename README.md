@@ -13,7 +13,6 @@ A FastAPI server that provides:
 ```
 Image_API/
 ├── main.py                # FastAPI server entry point
-├── streamlit_app.py       # Local Streamlit UI (calls enhancement library directly)
 ├── requirements.txt
 ├── API.md                 # Full REST + WebSocket API reference
 │
@@ -44,7 +43,7 @@ The system is designed with a clear server/client split so that:
 ┌──────────────────────────────────────────┐
 │               CLIENT SIDE                │
 │                                          │
-│  Browser (frontend/)   streamlit_app.py  │
+│  Browser (frontend/)                     │
 │  curl / Python requests                  │
 │  Any REST/WebSocket client               │
 └────────────┬─────────────────────────────┘
@@ -59,10 +58,6 @@ The system is designed with a clear server/client split so that:
 │  └─ video/        frame extraction       │
 └──────────────────────────────────────────┘
 ```
-
-**`streamlit_app.py`** is a special case: it imports the enhancement library directly
-(no HTTP hop) for a fast, zero-latency local UI. It is **not** a client of the FastAPI
-server — it runs the same enhancement code in-process.  Run it separately from the server.
 
 ---
 
@@ -118,16 +113,6 @@ USE_LITE_MODEL=0 uvicorn main:app --reload --port 8000   # force full
 ```
 
 If neither weights file exists, the server starts with ImageNet-pretrained backbone only — detection heads are randomly initialised and detections will be noise until training is complete.
-
-### 4 — Run the Streamlit UI (optional, local mode)
-
-Open a separate terminal with the same venv active:
-
-```bash
-streamlit run streamlit_app.py
-```
-
-Navigate to `http://localhost:8501` in your browser.
 
 ---
 

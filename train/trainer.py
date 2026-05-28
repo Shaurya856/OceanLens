@@ -270,6 +270,7 @@ def train(
     max_samples: int | None = None,
     lite: bool = False,
     compile_model: bool = False,
+    resume: str | None = None,
 ) -> None:
     os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -338,48 +339,79 @@ def train(
     use_fp16 = device.type == "cuda" and cuda_cap < 8
     scaler = torch.cuda.GradScaler() if use_fp16 else None
     best_val_loss = float("inf")
+    start_epoch   = 0
+
+    # ── Resume from checkpoint ────────────────────────────────────────────────
+    resume_ckpt: dict | None = None
+    if resume is not None:
+        resume_ckpt = torch.load(resume, map_location=device, weights_only=False)
+        model.load_state_dict(resume_ckpt["model"])
+        start_epoch   = resume_ckpt["epoch"] + 1
+        best_val_loss = resume_ckpt["best_val_loss"]
+        logger.info("Resumed from %s  (epoch %d, best_val_loss=%.4f)", resume, start_epoch, best_val_loss)
 
     # ── Phase 1: frozen backbone ───────────────────────────────────────────────
-    logger.info("Phase 1 — backbone frozen (%d epochs)", warmup_epochs)
-    for param in model.backbone.parameters():
-        param.requires_grad_(False)
+    phase1_start = start_epoch
+    phase1_end   = warmup_epochs
 
-    optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=True)
-    scheduler = CosineAnnealingLR(optimizer, T_max=max(1, warmup_epochs), eta_min=head_lr * 0.1)
+    if phase1_start < phase1_end:
+        logger.info("Phase 1 — backbone frozen (epochs %d–%d)", phase1_start + 1, phase1_end)
+        for param in model.backbone.parameters():
+            param.requires_grad_(False)
 
-    for epoch in range(warmup_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_losses   = _val_epoch(model, val_loader, criterion, device)
-        scheduler.step()
+        optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=True)
+        scheduler = CosineAnnealingLR(optimizer, T_max=max(1, warmup_epochs), eta_min=head_lr * 0.1)
 
-        _log_losses(epoch, total_epochs, train_losses, val_losses)
-        _save_checkpoint(model, checkpoint_dir, epoch)
-        if val_losses["total"] < best_val_loss:
-            best_val_loss = val_losses["total"]
-            _save_checkpoint(model, checkpoint_dir, epoch, name="best.pt")
+        if resume_ckpt is not None and start_epoch < warmup_epochs:
+            optimizer.load_state_dict(resume_ckpt["optimizer"])
+            scheduler.load_state_dict(resume_ckpt["scheduler"])
+            if scaler is not None and resume_ckpt.get("scaler") is not None:
+                scaler.load_state_dict(resume_ckpt["scaler"])
+
+        for epoch in range(phase1_start, phase1_end):
+            train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
+            val_losses   = _val_epoch(model, val_loader, criterion, device)
+            scheduler.step()
+
+            _log_losses(epoch, total_epochs, train_losses, val_losses)
+            _save_checkpoint(model, optimizer, scheduler, scaler, epoch, best_val_loss, checkpoint_dir)
+            if val_losses["total"] < best_val_loss:
+                best_val_loss = val_losses["total"]
+                _save_checkpoint(model, optimizer, scheduler, scaler, epoch, best_val_loss, checkpoint_dir, name="best.pt")
 
     # ── Phase 2: full fine-tune ────────────────────────────────────────────────
     if device.type == "mps":
         torch.mps.synchronize()
         torch.mps.empty_cache()
-    logger.info("Phase 2 — full fine-tune (%d epochs)", total_epochs - warmup_epochs)
-    for param in model.backbone.parameters():
-        param.requires_grad_(True)
 
-    optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=False)
-    remaining = max(1, total_epochs - warmup_epochs)
-    scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=backbone_lr * 0.1)
+    phase2_start = max(start_epoch, warmup_epochs)
+    phase2_end   = total_epochs
 
-    for epoch in range(warmup_epochs, total_epochs):
-        train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_losses   = _val_epoch(model, val_loader, criterion, device)
-        scheduler.step()
+    if phase2_start < phase2_end:
+        logger.info("Phase 2 — full fine-tune (epochs %d–%d)", phase2_start + 1, phase2_end)
+        for param in model.backbone.parameters():
+            param.requires_grad_(True)
 
-        _log_losses(epoch, total_epochs, train_losses, val_losses)
-        _save_checkpoint(model, checkpoint_dir, epoch)
-        if val_losses["total"] < best_val_loss:
-            best_val_loss = val_losses["total"]
-            _save_checkpoint(model, checkpoint_dir, epoch, name="best.pt")
+        remaining = max(1, total_epochs - warmup_epochs)
+        optimizer = _build_optimizer(model, backbone_lr, head_lr, weight_decay, freeze_backbone=False)
+        scheduler = CosineAnnealingLR(optimizer, T_max=remaining, eta_min=backbone_lr * 0.1)
+
+        if resume_ckpt is not None and start_epoch >= warmup_epochs:
+            optimizer.load_state_dict(resume_ckpt["optimizer"])
+            scheduler.load_state_dict(resume_ckpt["scheduler"])
+            if scaler is not None and resume_ckpt.get("scaler") is not None:
+                scaler.load_state_dict(resume_ckpt["scaler"])
+
+        for epoch in range(phase2_start, phase2_end):
+            train_losses = _train_epoch(model, train_loader, optimizer, criterion, device, scaler)
+            val_losses   = _val_epoch(model, val_loader, criterion, device)
+            scheduler.step()
+
+            _log_losses(epoch, total_epochs, train_losses, val_losses)
+            _save_checkpoint(model, optimizer, scheduler, scaler, epoch, best_val_loss, checkpoint_dir)
+            if val_losses["total"] < best_val_loss:
+                best_val_loss = val_losses["total"]
+                _save_checkpoint(model, optimizer, scheduler, scaler, epoch, best_val_loss, checkpoint_dir, name="best.pt")
 
     # ── Prototype population (SeabedDetector only) ────────────────────────────
     if not lite:
@@ -403,13 +435,24 @@ def train(
 
 def _save_checkpoint(
     model: nn.Module,
-    directory: str,
+    optimizer: AdamW,
+    scheduler: CosineAnnealingLR,
+    scaler: "torch.cuda.GradScaler | None",
     epoch: int,
+    best_val_loss: float,
+    directory: str,
     name: str | None = None,
 ) -> None:
     filename = name or f"epoch_{epoch + 1:03d}.pt"
     path = os.path.join(directory, filename)
-    torch.save(model.state_dict(), path)
+    torch.save({
+        "epoch":         epoch,
+        "model":         model.state_dict(),
+        "optimizer":     optimizer.state_dict(),
+        "scheduler":     scheduler.state_dict(),
+        "scaler":        scaler.state_dict() if scaler is not None else None,
+        "best_val_loss": best_val_loss,
+    }, path)
 
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
@@ -440,6 +483,8 @@ if __name__ == "__main__":
     group.add_argument("--lite", action="store_true",
                        help="Train SeabedLite (~4M params, laptop/MPS)")
 
+    parser.add_argument("--resume", default=None, metavar="CHECKPOINT",
+                        help="Path to a checkpoint to resume from (e.g. checkpoints/epoch_045.pt)")
     parser.add_argument("--compile", action="store_true",
                         help="Wrap model with torch.compile for ~20-30%% throughput gain "
                              "(requires PyTorch 2.4+; first epoch ~30-60s slower for compilation)")
@@ -465,6 +510,7 @@ if __name__ == "__main__":
             max_samples=32,
             lite=args.lite,
             compile_model=args.compile,
+            resume=args.resume,
         )
     else:
         train(
@@ -482,4 +528,5 @@ if __name__ == "__main__":
             max_samples=args.max_samples,
             lite=args.lite,
             compile_model=args.compile,
+            resume=args.resume,
         )
