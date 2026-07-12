@@ -140,9 +140,7 @@ Two model variants are available, sharing the same dataset format and training p
 ```bash
 # 1. Organise your images (one subfolder per species):
 #    data/images/Seahorse/img001.jpg
-#    data/images/Sharks/img001.jpg  ...
-#    (Current dataset: 13,711 images across 23 species)
-
+#   data/images/Sharks/img001.jpg ...
 # 2. Annotation file is already at data/annotations.json
 #    To regenerate from the image folders:
 python train/generate_annotations.py
